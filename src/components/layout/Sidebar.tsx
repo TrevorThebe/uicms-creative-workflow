@@ -3,6 +3,7 @@ import { ActiveNavSection } from '../../types';
 import { useApp } from '../../context/AppContext';
 import {
   BarChart3,
+  BookOpen,
   Building2,
   Calendar,
   CheckCircle2,
@@ -110,7 +111,8 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
     { id: 'team', label: 'Team Workload', icon: Users, group: 'management' },
     { id: 'clients', label: 'Clients & CI Books', icon: Building2, group: 'management' },
 
-    // System Config
+    // System Config & Help
+    { id: 'user_guide', label: 'System Manual & ReadMe', icon: BookOpen, group: 'config' },
     { id: 'departments', label: 'Departments & Workflow', icon: Settings, group: 'config' },
     { id: 'administration', label: 'Admin Settings & Audit', icon: Shield, group: 'config' },
   ];

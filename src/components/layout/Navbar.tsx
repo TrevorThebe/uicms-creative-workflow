@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Bell,
+  BookOpen,
   Check,
   ChevronDown,
   KeyRound,
@@ -149,6 +150,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
           <span className="hidden md:inline text-[11px] font-medium text-slate-400 capitalize">
             {themeMode === 'light' ? 'Day' : 'Night'}
           </span>
+        </button>
+
+        {/* System Manual & ReadMe Guide Quick Button */}
+        <button
+          type="button"
+          onClick={() => setActiveNavSection('user_guide')}
+          title="System Manual & ReadMe Documentation Guide"
+          className="p-2 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-colors flex items-center gap-1"
+        >
+          <BookOpen className="w-4 h-4" />
+          <span className="hidden lg:inline text-[11px] font-medium text-slate-300">Guide</span>
         </button>
 
         {/* Messages & Chat Quick Button */}

@@ -14,6 +14,7 @@ import { TeamWorkloadView } from './components/views/TeamWorkloadView';
 import { ClientsBrandCIView } from './components/views/ClientsBrandCIView';
 import { ReportsAnalyticsView } from './components/views/ReportsAnalyticsView';
 import { WeeklyDepartmentSummaryView } from './components/views/WeeklyDepartmentSummaryView';
+import { UserGuideReadmeView } from './components/views/UserGuideReadmeView';
 import { AdministrationAuditView } from './components/views/AdministrationAuditView';
 import { FileRepositoryView } from './components/views/FileRepositoryView';
 import { DepartmentsWorkflowView } from './components/views/DepartmentsWorkflowView';
@@ -114,6 +115,10 @@ const AppContent: React.FC = () => {
 
           {activeNavSection === 'weekly_summary' && (
             <WeeklyDepartmentSummaryView onOpenProject={handleOpenProject} />
+          )}
+
+          {activeNavSection === 'user_guide' && (
+            <UserGuideReadmeView />
           )}
 
           {(activeNavSection === 'administration' || activeNavSection === 'settings') && (

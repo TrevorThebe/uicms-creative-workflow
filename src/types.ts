@@ -392,6 +392,7 @@ export type ActiveNavSection =
   | 'clients'
   | 'departments'
   | 'tracker'
+  | 'user_guide'
   | 'settings'
   | 'administration';
 
