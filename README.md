@@ -156,28 +156,65 @@ Click any project card or table row to open the 8-tab workspace:
 * **Department Throughput Charts:** Visual analysis of turnaround speed, stage bottlenecks, and on-time delivery percentages.
 * **Workload Distribution:** Team member capacity meters to prevent designer burnout.
 
-### 4.14 Administration, RBAC & Immutable Audit Logs
-* **User Management:** Create users, assign security roles, manage departments, or suspend accounts.
-* **System Policies:** Enforce mandatory brief locking, multi-approval rules, and QA pass thresholds.
-* **Audit Trail:** 100% immutable log recording every user action with timestamp and before/after stages.
+### 4.14 Administration, RBAC & Immutable Audit Logs (🔒 Superuser Only)
+> **Security Notice:** This module is strictly restricted to authenticated **Superusers (`super_admin`) only**. It is hidden from standard navigation for all other roles and protected with cryptographic role verification.
 
-### 4.15 Local Database API Sync & AWS Hosting
+* **User Management & Provisioning:** Superusers can create user accounts, assign roles across all departments, modify titles, reset passwords, and enforce security suspensions with mandatory audit reasons.
+* **Immutable Audit Trail:** Superusers can inspect and search through the 100% immutable event stream auditing every brief lock, stage transition, client approval, QA certificate, and administrative change with UTC timestamps, actor names, and IP references.
+* **System Policies & Governance:** Superusers can enforce brief lock thresholds, configure department SLA turnaround targets, or re-seed the system demo state.
+* **Database Snapshots & Local Sync:** Superusers can export complete JSON snapshots of all 12 collections or connect to the PHP REST API bridge for MySQL synchronization.
+
+### 4.15 Local Database API Sync & AWS Hosting (🔒 Superuser Only)
 * **JSON Backup / Restore:** One-click full export and import of all 12 database collections.
 * **Local PHP/MySQL Bridge:** Sync React state with your local XAMPP or Docker MySQL backend.
-* **AWS Deployment Specs:** Full architectural blueprints and sizing for ECS Fargate, RDS MySQL, S3, and EC2.
+* **AWS Deployment Specs:** Full architectural blueprints and sizing for ECS Fargate, RDS MySQL, S3, and EC2 (recommended `t3.small` / Ubuntu 24.04 LTS).
 
 ---
 
-## 5. Role-Based Access Control (RBAC) Guides
+## 5. Role-Based Access Control (RBAC) & Superuser Manual
 
-| Role | Primary Responsibilities | Key Access Privileges |
-| :--- | :--- | :--- |
-| **Super Admin** | System oversight, user accounts, system configuration | Unrestricted access across all departments, admin tools, and audit logs |
-| **Department Manager** | Workload assignment, brief validation, final release | Brief locking, stage overrides, workload re-balancing, department reports |
-| **Account Manager** | Client communication, brief intake, deadline tracking | Create requests, submit briefs, coordinate client review and sign-offs |
-| **Designer** | Artwork production, deliverable proof uploads | Upload proofs, manage sub-tasks, update hours, review client feedback |
-| **QA User** | Pre-flight verification, compliance auditing | Perform QA checklists, approve/reject pre-flight certificates |
-| **Client** | Review artwork proofs, submit feedback, sign-offs | Client Review tab, Feedback submission, Digital sign-off approval |
+### 5.1 Role Clearance Matrix & Security Boundaries
+
+| Role | Clearance Level | Admin Settings & Audit Access | Key Operational Privileges |
+| :--- | :--- | :--- | :--- |
+| **Super Admin (Superuser)** | **Level 5 (Unrestricted)** | **✅ FULL EXCLUSIVE ACCESS** | System governance, user provisioning/suspension, immutable audit logs, database snapshots, policy overrides |
+| **Department Manager** | Level 4 (Departmental) | ❌ Restricted (Hidden) | Brief locking, stage overrides, workload re-balancing, departmental velocity summaries |
+| **Account Manager** | Level 3 (Client Operations) | ❌ Restricted (Hidden) | Create requests, submit briefs, coordinate client reviews and sign-offs, manage approvals |
+| **Designer** | Level 2 (Creative Production) | ❌ Restricted (Hidden) | Upload artwork proofs (V1.0, V1.1), manage sub-tasks, log hours, address client revision feedback |
+| **QA User** | Level 3 (Quality Governance) | ❌ Restricted (Hidden) | 14-point pre-flight checklist auditing, issue QA certifications (PASS / PASS WITH NOTES / FAIL) |
+| **Client** | Level 1 (Portal Sign-off) | ❌ Restricted (Hidden) | High-res proof inspection, revision change requests, SHA-256 cryptographic sign-off approvals |
+
+---
+
+### 5.2 Superuser Operations Manual (Step-by-Step for Superusers)
+
+As a **Superuser (`super_admin`)**, follow these procedures for platform governance:
+
+#### 1. Managing Users & Account Security
+1. In the left sidebar, navigate to **System Config & Help ➔ Admin Settings & Audit** (this link is only rendered for Superusers).
+2. Under the **User Management** panel:
+   - Click **"+ Add User"** to provision a new team member with their email, name, department, and role.
+   - Click the **Edit** icon next to any user to change their role title, department, or update avatar credentials.
+   - Click the **Ban / Suspend** icon to temporarily or permanently suspend a user account. Enter a mandatory reason (e.g., *Contract expiration* or *Security audit*) which gets logged to the immutable audit trail.
+   - Click **Reset Password** to send a one-time credential reset link.
+
+#### 2. Auditing Immutable Platform Activity
+1. Inside **Admin Settings & Audit**, scroll to the **Immutable Audit Trail** section.
+2. Filter logs by action type:
+   - `BRIEF_LOCKED`: Track when managers formally committed project scopes.
+   - `CLIENT_APPROVED`: Inspect client digital approvals and SHA-256 signature tokens.
+   - `QA_CERTIFIED`: Review pre-flight inspection passes or failures.
+   - `USER_SUSPENDED` / `USER_CREATED`: Audit user account administrative modifications.
+3. Use the search input to filter by project number (e.g. `PRJ-MKT-001`) or user name.
+
+#### 3. Database Snapshots & MySQL/PHP Synchronization
+1. Under **Database & Sync Manager**:
+   - Click **"Export JSON Database Snapshot"** to download an encrypted backup of all 12 relational collections.
+   - Click **"Import JSON Backup"** to restore system data to a previous point in time.
+   - Click **"Test PHP/MySQL API Bridge"** to verify local or cloud database connectivity to AWS RDS / Docker MySQL.
+
+#### 4. Resetting Demo State
+- Click **"Reset Demo System State"** in the top right of the Admin Settings header to re-seed pristine demo projects, tasks, proofs, and QA records across all 4 departments.
 
 ---
 

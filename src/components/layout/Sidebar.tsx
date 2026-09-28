@@ -114,7 +114,9 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
     // System Config & Help
     { id: 'user_guide', label: 'System Manual & ReadMe', icon: BookOpen, group: 'config' },
     { id: 'departments', label: 'Departments & Workflow', icon: Settings, group: 'config' },
-    { id: 'administration', label: 'Admin Settings & Audit', icon: Shield, group: 'config' },
+    ...(currentUser.role === 'super_admin'
+      ? [{ id: 'administration' as ActiveNavSection, label: 'Admin Settings & Audit', icon: Shield, group: 'config' as const }]
+      : []),
   ];
 
   return (

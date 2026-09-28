@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   History,
+  Lock,
   Moon,
   Palette,
   RotateCcw,
   Search,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   Sliders,
   Sun,
@@ -16,10 +18,79 @@ import { UserManagementPanel } from '../admin/UserManagementPanel';
 import { DatabaseSyncManager } from '../admin/DatabaseSyncManager';
 
 export const AdministrationAuditView: React.FC = () => {
-  const { adminConfig, updateAdminConfig, activityLogs, users, resetAllDataToDemo, themeMode, setThemeMode } = useApp();
+  const {
+    currentUser,
+    setActiveNavSection,
+    adminConfig,
+    updateAdminConfig,
+    activityLogs,
+    users,
+    resetAllDataToDemo,
+    themeMode,
+    setThemeMode,
+  } = useApp();
 
   const [searchLog, setSearchLog] = useState('');
   const [selectedActionFilter, setSelectedActionFilter] = useState('all');
+
+  // Superuser Only Guard: Admin Settings & Audit is strictly restricted to super_admin
+  if (currentUser.role !== 'super_admin') {
+    return (
+      <div className="p-6 lg:p-12 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-150">
+        <div className="p-8 sm:p-10 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-center space-y-5 shadow-2xl backdrop-blur-sm">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 mx-auto flex items-center justify-center shadow-lg shadow-rose-950/50">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-[11px] font-mono uppercase tracking-widest font-bold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              Access Restricted · Superuser Only
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              Superuser Clearance Required
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-lg mx-auto leading-relaxed">
+              The <strong>Admin Settings & Immutable Audit Trail</strong> module is strictly restricted to authenticated <strong>Superusers</strong> (Super Administrator role).
+            </p>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 max-w-md mx-auto text-left space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-400">Your Current Account:</span>
+              <span className="font-semibold text-white">{currentUser.name}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-400">Assigned Role:</span>
+              <span className="font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-bold">
+                {currentUser.roleTitle} ({currentUser.role})
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800">
+              <span className="text-slate-400">Governance Policy:</span>
+              <span className="text-rose-400 font-medium">No Governance Clearance</span>
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setActiveNavSection('dashboard')}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all"
+            >
+              Return to Executive Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveNavSection('user_guide')}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-900/30"
+            >
+              View System ReadMe & Roles Guide
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const filteredLogs = activityLogs.filter((log) => {
     if (selectedActionFilter !== 'all' && log.action !== selectedActionFilter) return false;

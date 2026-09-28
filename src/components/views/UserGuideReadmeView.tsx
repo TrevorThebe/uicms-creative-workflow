@@ -329,16 +329,18 @@ export const UserGuideReadmeView: React.FC = () => {
     },
     {
       id: 'administration',
-      title: '11. Admin Settings, Audit & MySQL/PHP Bridge',
+      title: '11. Admin Settings, Audit & MySQL/PHP Bridge (Superuser Only)',
       icon: Shield,
       category: 'System Governance',
-      tag: 'Admin & Database',
-      summary: 'User role management, immutable audit trail, database sync, and AWS hosting specs.',
+      tag: 'Superuser Exclusive',
+      summary: 'Restricted exclusively to Superusers (Super Admin): System governance, user account management, immutable audit trail, MySQL/PHP sync bridge, and AWS deployment.',
       details: [
-        'User Management: Role assignments, suspension toggles, and security credentials.',
-        'JSON Database Backup & Restore: One-click export/import of all 12 system collections.',
-        'PHP / MySQL REST API Bridge: Ready-to-run PHP scripts for local XAMPP or Docker MySQL sync.',
-        'AWS Hosting Specs: Complete architecture and compute sizing for ECS Fargate, RDS, and EC2.',
+        '🔐 Strict Access Boundary: Visible and accessible exclusively to Superusers (Super Admin role). Hidden from all other role navigations.',
+        '👥 User Management & Provisioning: Create accounts, assign department roles, reset credentials, and enforce security suspensions.',
+        '📜 Immutable Audit Trail: Real-time cryptographic event log auditing every brief lock, stage shift, revision request, and digital sign-off.',
+        '💾 Database Backup & Snapshots: One-click export/import of all 12 system collections in JSON format for offsite archiving.',
+        '🐘 MySQL & PHP Backend Bridge: Live synchronization scripts with REST API endpoints for on-premise XAMPP or Docker MySQL 8.0.',
+        '☁️ AWS EC2 & Cloud Architecture: Infrastructure specifications and deployment guides for EC2 t3.small instances and RDS MySQL.',
       ],
       navTarget: 'administration' as ActiveNavSection,
     },
@@ -352,33 +354,77 @@ export const UserGuideReadmeView: React.FC = () => {
       title: string;
       icon: React.ElementType;
       color: string;
+      accessClearance: string;
+      hasAdminAccess: boolean;
       responsibilities: string[];
       keyWorkflowSteps: string[];
+      superuserAdminGuide?: {
+        sectionTitle: string;
+        capabilities: Array<{ name: string; desc: string; step: string }>;
+      };
       recommendedViews: ActiveNavSection[];
     }
   > = {
     super_admin: {
-      roleName: 'Super Admin',
+      roleName: 'Super Admin (Superuser)',
       title: 'Chief Operations & Systems Administrator',
       icon: Shield,
       color: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
+      accessClearance: 'Level 5 · Full Superuser Clearance (Exclusive access to Admin Settings & Audit)',
+      hasAdminAccess: true,
       responsibilities: [
-        'System governance, user account provisioning, and security management.',
-        'Enforcing brief locking policies and multi-department workflow rules.',
-        'Database backup snapshots, local PHP/MySQL synchronization, and audit log inspection.',
+        'Full operational governance and exclusive access to the Admin Settings & Audit Trail module.',
+        'User management: Provisioning user accounts, assigning roles, resetting passwords, and suspending users.',
+        'Enforcing brief locking policies, quality assurance gates, and multi-department workflow rules.',
+        'Database snapshot exports/imports and synchronizing local MySQL/PHP API bridge endpoints.',
+        'Auditing compliance across all 11 workflow stages and monitoring systemic bottlenecks.',
       ],
       keyWorkflowSteps: [
-        'Review global throughput metrics on Executive Dashboard.',
-        'Inspect immutable audit logs in Administration view for compliance.',
-        'Manage user roles and workload quotas in User Management panel.',
+        'Access "Admin Settings & Audit" from the left sidebar under Governance & Admin.',
+        'Inspect the Immutable Audit Trail with instant filtering by action type, project ID, and user name.',
+        'Manage user accounts, assign roles (Super Admin, Manager, AM, Designer, QA, Client), and enforce suspensions.',
+        'Download periodic JSON database backup snapshots or sync with local MySQL instance via PHP bridge.',
+        'Review global department throughput and blocker escalations in Weekly Work Summary.',
       ],
-      recommendedViews: ['dashboard', 'weekly_summary', 'administration', 'all_projects', 'reports'],
+      superuserAdminGuide: {
+        sectionTitle: 'Superuser Administration & Audit Guide — Step-by-Step',
+        capabilities: [
+          {
+            name: '1. Accessing Admin Settings & Audit',
+            desc: 'Superusers have an exclusive "Admin Settings & Audit" link in the sidebar under Governance & Admin. Other roles have this menu hidden and are blocked with a Superuser security clearance barrier if attempted directly.',
+            step: 'Click "Admin Settings & Audit" in the sidebar or navigate via the Superuser dashboard shortcut.',
+          },
+          {
+            name: '2. User Management & Security',
+            desc: 'Create new user profiles, edit role titles, modify department affiliations, reset user credentials, or toggle temporary/permanent suspensions with mandatory audit reasons.',
+            step: 'Navigate to the "User Management" tab inside Admin Settings to add or modify user credentials.',
+          },
+          {
+            name: '3. Inspecting Immutable Audit Trail',
+            desc: 'Every system event (Brief Locked, QA Certified, Client Approved, File Uploaded, User Suspended) is logged with UTC timestamps, user names, and change deltas.',
+            step: 'Filter logs by action (e.g. BRIEF_LOCKED, CLIENT_APPROVED, USER_SUSPENDED) or search by project ID.',
+          },
+          {
+            name: '4. Database Backup & PHP/MySQL Sync',
+            desc: 'Export complete JSON snapshots of all 12 relational collections or connect to the PHP REST API for automated MySQL database synchronization on AWS EC2 or local Docker.',
+            step: 'Use the "Database & Sync Manager" panel to download backups or test MySQL database bridge connectivity.',
+          },
+          {
+            name: '5. Workflow Policies & Demo State Reset',
+            desc: 'Enforce brief lock completeness rules, set department SLA deadlines, or re-seed the system with pristine enterprise demo datasets.',
+            step: 'Click "Reset Demo System State" in the header to restore pristine demo data across all 4 departments.',
+          },
+        ],
+      },
+      recommendedViews: ['dashboard', 'weekly_summary', 'administration', 'all_projects', 'reports', 'team'],
     },
     department_manager: {
       roleName: 'Department Manager',
       title: 'Head of Creative / Travel / RAM Production',
       icon: Users,
       color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
+      accessClearance: 'Level 4 · Departmental Management (Admin Settings & Audit restricted to Superusers)',
+      hasAdminAccess: false,
       responsibilities: [
         'Intake validation of incoming creative briefs from Account Managers.',
         'Formally locking brief specifications to prevent scope creep during production.',
@@ -396,6 +442,8 @@ export const UserGuideReadmeView: React.FC = () => {
       title: 'Senior Account Director & Client Liaison',
       icon: Inbox,
       color: 'text-sky-400 bg-sky-500/10 border-sky-500/30',
+      accessClearance: 'Level 3 · Account Operations (Admin Settings & Audit restricted to Superusers)',
+      hasAdminAccess: false,
       responsibilities: [
         'Client intake, brief creation, and timeline coordination.',
         'Coordinating client review deadlines and feedback revisions.',
@@ -413,6 +461,8 @@ export const UserGuideReadmeView: React.FC = () => {
       title: 'Senior Art Director, Motion Designer, UI Specialist',
       icon: Palette,
       color: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+      accessClearance: 'Level 2 · Creative Production (Admin Settings & Audit restricted to Superusers)',
+      hasAdminAccess: false,
       responsibilities: [
         'Deliverable production in Figma, Photoshop, Illustrator, and InDesign.',
         'Uploading deliverable artwork proofs (V1.0, V1.1) and high-res master packages.',
@@ -430,6 +480,8 @@ export const UserGuideReadmeView: React.FC = () => {
       title: 'Quality Assurance & CI Compliance Lead',
       icon: ShieldCheck,
       color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+      accessClearance: 'Level 3 · Quality Governance (Admin Settings & Audit restricted to Superusers)',
+      hasAdminAccess: false,
       responsibilities: [
         'Pre-flight quality assurance and corporate identity compliance auditing.',
         'Validating bleeds, color spaces, DPI resolutions, barcodes, and legal clauses.',
@@ -447,6 +499,8 @@ export const UserGuideReadmeView: React.FC = () => {
       title: 'VP Marketing / Brand Director (Client Portal)',
       icon: Award,
       color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+      accessClearance: 'Level 1 · Client Portal (Admin Settings & Audit restricted to Superusers)',
+      hasAdminAccess: false,
       responsibilities: [
         'Reviewing artwork proofs in high resolution.',
         'Submitting revision feedback or change requests.',
@@ -679,27 +733,49 @@ export const UserGuideReadmeView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSections.map((sec) => {
             const Icon = sec.icon;
+            const isSuperuserRestricted = sec.id === 'administration';
+            const isCurrentUserSuperuser = currentUser.role === 'super_admin';
 
             return (
               <div
                 key={sec.id}
-                className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 shadow-sm"
+                className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 shadow-sm ${
+                  isSuperuserRestricted
+                    ? 'bg-slate-900/95 border-purple-500/30 hover:border-purple-500/50 ring-1 ring-purple-500/20'
+                    : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                }`}
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          isSuperuserRestricted
+                            ? 'bg-purple-500/20 border border-purple-500/30 text-purple-300'
+                            : 'bg-indigo-500/10 border border-indigo-500/20 text-indigo-400'
+                        }`}
+                      >
                         <Icon className="w-4 h-4" />
                       </div>
                       <span className="text-xs font-mono font-semibold text-indigo-300">{sec.category}</span>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                      {sec.tag}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isSuperuserRestricted && !isCurrentUserSuperuser && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono font-bold flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>Superuser Only</span>
+                        </span>
+                      )}
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                        {sec.tag}
+                      </span>
+                    </div>
                   </div>
 
                   <div>
-                    <h3 className="text-sm font-bold text-white">{sec.title}</h3>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <span>{sec.title}</span>
+                    </h3>
                     <p className="text-xs text-slate-300 mt-1 leading-relaxed">{sec.summary}</p>
                   </div>
 
@@ -741,9 +817,15 @@ export const UserGuideReadmeView: React.FC = () => {
                         handleNavigate(sec.navTarget);
                       }
                     }}
-                    className="text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 transition-colors"
+                    className={`font-bold flex items-center gap-1 transition-colors ${
+                      isSuperuserRestricted && !isCurrentUserSuperuser
+                        ? 'text-purple-400 hover:text-purple-300'
+                        : 'text-indigo-400 hover:text-indigo-300'
+                    }`}
                   >
-                    <span>Open Section</span>
+                    <span>
+                      {isSuperuserRestricted && !isCurrentUserSuperuser ? 'View Access Guard' : 'Open Section'}
+                    </span>
                     <ArrowRight className="w-3 h-3" />
                   </button>
                 </div>
@@ -813,13 +895,32 @@ export const UserGuideReadmeView: React.FC = () => {
 
           return (
             <div className="p-5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-slate-800/80">
-                <div className={`p-2.5 rounded-xl border ${activeRole.color}`}>
-                  <Icon className="w-5 h-5" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl border ${activeRole.color}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">{activeRole.roleName}</h3>
+                    <p className="text-xs text-slate-400">{activeRole.title}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">{activeRole.roleName}</h3>
-                  <p className="text-xs text-slate-400">{activeRole.title}</p>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[11px] px-3 py-1 rounded-full font-mono font-semibold flex items-center gap-1.5 ${
+                      activeRole.hasAdminAccess
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                        : 'bg-slate-800/80 text-slate-400 border border-slate-700/50'
+                    }`}
+                  >
+                    {activeRole.hasAdminAccess ? (
+                      <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                    <span>{activeRole.accessClearance}</span>
+                  </span>
                 </div>
               </div>
 
@@ -854,6 +955,59 @@ export const UserGuideReadmeView: React.FC = () => {
                   </ul>
                 </div>
               </div>
+
+              {/* Dedicated Superuser Administration & Audit Guide Card */}
+              {activeRole.superuserAdminGuide && (
+                <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/30 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-purple-400" />
+                      <h4 className="text-xs font-bold text-purple-200 uppercase tracking-wider">
+                        {activeRole.superuserAdminGuide.sectionTitle}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate('administration')}
+                      className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors shadow-xs"
+                    >
+                      <span>Open Admin Settings & Audit</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {activeRole.superuserAdminGuide.capabilities.map((cap, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg bg-slate-900/90 border border-purple-500/20 space-y-1.5"
+                      >
+                        <span className="text-xs font-bold text-white block">{cap.name}</span>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">{cap.desc}</p>
+                        <div className="pt-1 text-[10px] text-purple-300 font-medium flex items-center gap-1 border-t border-slate-800">
+                          <CheckCircle2 className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                          <span>{cap.step}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Security Boundary Notice for Non-Superusers */}
+              {!activeRole.hasAdminAccess && (
+                <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                    <span>
+                      <strong>Admin Settings & Audit Boundary:</strong> This role does not have access to platform governance, user management, or immutable audit logs.
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono uppercase font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                    Superuser Protected
+                  </span>
+                </div>
+              )}
 
               {/* Recommended Views Quick Nav */}
               <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
