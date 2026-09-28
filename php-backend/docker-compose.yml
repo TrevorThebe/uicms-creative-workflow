@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # 1. NGINX Web Server & Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: uicms-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php-fpm
+    networks:
+      - uicms-network
+
+  # 2. PHP 8.2 FPM Backend API
+  php-fpm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uicms-php
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_NAME: uicms_workflow
+      DB_USER: uicms_user
+      DB_PASS: SecurePass2026!
+      DB_PORT: 3306
+      APP_ENV: production
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - mysql
+    networks:
+      - uicms-network
+
+  # 3. MySQL 8.0 Database (Seeded automatically)
+  mysql:
+    image: mysql:8.0
+    container_name: uicms-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: RootPassword2026!
+      MYSQL_DATABASE: uicms_workflow
+      MYSQL_USER: uicms_user
+      MYSQL_PASSWORD: SecurePass2026!
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../database_seed.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - uicms-network
+
+volumes:
+  mysql_data:
+
+networks:
+  uicms-network:
+    driver: bridge

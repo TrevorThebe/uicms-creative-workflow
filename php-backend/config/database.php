@@ -1,0 +1,67 @@
+<?php
+// =============================================================================
+// UICMS Creative Workflow & Management System
+// Database Configuration (PDO MySQL / MariaDB / AWS RDS)
+// =============================================================================
+
+class Database {
+    private string $host;
+    private string $db_name;
+    private string $username;
+    private string $password;
+    private int $port;
+    private ?PDO $conn = null;
+
+    public function __construct() {
+        // Load from environment variables (AWS ECS / Elastic Beanstalk / Docker / .env)
+        $this->host = getenv('DB_HOST') ?: '127.0.0.1';
+        $this->db_name = getenv('DB_NAME') ?: 'uicms_workflow';
+        $this->username = getenv('DB_USER') ?: 'root';
+        $this->password = getenv('DB_PASS') !== false ? getenv('DB_PASS') : '';
+        $this->port = (int)(getenv('DB_PORT') ?: 3306);
+    }
+
+    public function getConnection(): ?PDO {
+        $this->conn = null;
+        try {
+            $dsn = "mysql:host={$this->host};port={$this->port};dbname={$this->db_name};charset=utf8mb4";
+            $options = [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
+            ];
+            $this->conn = new PDO($dsn, $this->username, $this->password, $options);
+        } catch (PDOException $e) {
+            http_response_code(500);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Database Connection Error: " . $e->getMessage()
+            ]);
+            exit;
+        }
+
+        return $this->conn;
+    }
+}
+
+// Global CORS & JSON response helper
+function initApiHeaders(): void {
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+    header("Access-Control-Allow-Origin: $origin");
+    header("Access-Control-Allow-Credentials: true");
+    header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+    header("Content-Type: application/json; charset=UTF-8");
+
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        http_response_code(200);
+        exit();
+    }
+}
+
+function sendResponse(int $statusCode, array $payload): void {
+    http_response_code($statusCode);
+    echo json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit();
+}

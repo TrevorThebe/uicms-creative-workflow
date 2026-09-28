@@ -1,0 +1,6 @@
+{
+  "name": "UICMS Creative Workflow",
+  "description": "Enterprise workflow management system for creative, marketing, incentive travel, and online/RAM requests.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
