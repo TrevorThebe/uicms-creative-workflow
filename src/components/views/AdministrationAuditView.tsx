@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { UserManagementPanel } from '../admin/UserManagementPanel';
 import { DatabaseSyncManager } from '../admin/DatabaseSyncManager';
+import { SystemUsageAnalyticsPanel } from '../admin/SystemUsageAnalyticsPanel';
 
 export const AdministrationAuditView: React.FC = () => {
   const {
@@ -140,6 +141,9 @@ export const AdministrationAuditView: React.FC = () => {
           <span>Reset Demo System State</span>
         </button>
       </div>
+
+      {/* Recharts System Usage Telemetry & Analytics (Exclusively Visible to Superusers) */}
+      <SystemUsageAnalyticsPanel />
 
       {/* Local Files, Database & API Sync Manager */}
       <DatabaseSyncManager />
