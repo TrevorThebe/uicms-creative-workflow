@@ -18,7 +18,8 @@ export const ReportsAnalyticsView: React.FC = () => {
 
   const totalProjects = projects.length;
   const completedProjects = projects.filter((p) => p.stage === 'ARCHIVE' || p.status === 'completed').length;
-  const onTimeRate = 96.4;
+  const overdueProjects = projects.filter((p) => p.status === 'overdue').length;
+  const onTimeRate = totalProjects > 0 ? Math.round(((totalProjects - overdueProjects) / totalProjects) * 1000) / 10 : 100;
 
   const totalQAs = qaSubmissions.length;
   const passedQAs = qaSubmissions.filter((q) => q.result === 'PASS' || q.result === 'PASS_WITH_NOTES').length;
@@ -26,6 +27,20 @@ export const ReportsAnalyticsView: React.FC = () => {
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === 'complete').length;
+
+  // Compute average turnaround days from database projects
+  const completedList = projects.filter((p) => p.stage === 'ARCHIVE' || p.stage === 'RELEASE_PUBLISH' || p.status === 'completed');
+  let avgDays = 3.8;
+  if (completedList.length > 0) {
+    let totalDaysSum = 0;
+    completedList.forEach((p) => {
+      const created = new Date(p.createdAt || '2026-09-01').getTime();
+      const rel = new Date(p.releaseDate || '2026-09-15').getTime();
+      const diffDays = Math.max(1, Math.round((rel - created) / (1000 * 60 * 60 * 24)));
+      totalDaysSum += diffDays;
+    });
+    avgDays = Math.round((totalDaysSum / completedList.length) * 10) / 10;
+  }
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-150">
@@ -73,7 +88,7 @@ export const ReportsAnalyticsView: React.FC = () => {
             <span>Avg Turnaround Cycle</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-3xl font-bold text-white tracking-tight">4.2 Days</div>
+          <div className="text-3xl font-bold text-white tracking-tight">{avgDays} Days</div>
           <p className="text-[11px] text-slate-400 font-medium">Intake to Final Release Delivery</p>
         </div>
 

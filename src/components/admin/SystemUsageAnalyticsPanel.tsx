@@ -56,13 +56,13 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export const SystemUsageAnalyticsPanel: React.FC = () => {
-  const { projects, users, activityLogs, tasks, currentUser } = useApp();
+  const { projects, users, activityLogs, tasks, versions, qaSubmissions, approvals } = useApp();
 
   const [timeRange, setTimeRange] = useState<'6m' | '12m' | 'ytd'>('6m');
   const [requestChartType, setRequestChartType] = useState<'stacked' | 'area'>('area');
   const [userDistributionType, setUserDistributionType] = useState<'department' | 'role'>('department');
 
-  // Compute monthly project requests breakdown
+  // Compute monthly project requests breakdown 100% dynamically from database projects collection
   const monthlyRequestsData = useMemo(() => {
     const monthsList = [
       { key: '2026-01', name: 'Jan 2026' },
@@ -79,7 +79,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
       { key: '2026-12', name: 'Dec 2026' },
     ];
 
-    // Count actual projects per month and department
+    // Count actual projects per month and department from database
     const monthMap: Record<
       string,
       {
@@ -103,7 +103,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
       };
     });
 
-    // Populate from real projects data or fallback baseline distribution
+    // Dynamically aggregate from database projects collection
     projects.forEach((proj) => {
       const dateStr = proj.createdAt || '2026-09-01';
       const key = dateStr.substring(0, 7);
@@ -119,32 +119,6 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
           monthMap[key].marketing += 1;
         }
         monthMap[key].total += 1;
-      }
-    });
-
-    // Ensure realistic baseline volume across months if project count is small
-    const mockBaselines: Record<string, { m: number; t: number; r: number; d: number }> = {
-      '2026-01': { m: 12, t: 8, r: 10, d: 5 },
-      '2026-02': { m: 15, t: 11, r: 14, d: 7 },
-      '2026-03': { m: 18, t: 14, r: 16, d: 9 },
-      '2026-04': { m: 14, t: 10, r: 12, d: 6 },
-      '2026-05': { m: 22, t: 16, r: 19, d: 11 },
-      '2026-06': { m: 25, t: 19, r: 22, d: 14 },
-      '2026-07': { m: 21, t: 15, r: 18, d: 10 },
-      '2026-08': { m: 28, t: 22, r: 24, d: 16 },
-      '2026-09': { m: 32, t: 26, r: 28, d: 18 },
-    };
-
-    monthsList.forEach((m) => {
-      const base = mockBaselines[m.key];
-      if (base) {
-        if (monthMap[m.key].total === 0) {
-          monthMap[m.key].marketing = base.m;
-          monthMap[m.key].incentive_travel = base.t;
-          monthMap[m.key].online_ram = base.r;
-          monthMap[m.key].development = base.d;
-          monthMap[m.key].total = base.m + base.t + base.r + base.d;
-        }
       }
     });
 
@@ -228,7 +202,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
     };
   }, [users]);
 
-  // Compute audit event velocity data
+  // Compute audit event velocity data 100% dynamically from database collections
   const activityEventData = useMemo(() => {
     const actionCounts: Record<string, number> = {};
     activityLogs.forEach((log) => {
@@ -243,17 +217,63 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
 
-    const monthlyEvents = [
-      { month: 'Apr', briefLocks: 18, qaAudits: 22, approvals: 15, uploads: 34 },
-      { month: 'May', briefLocks: 24, qaAudits: 29, approvals: 21, uploads: 45 },
-      { month: 'Jun', briefLocks: 30, qaAudits: 36, approvals: 28, uploads: 58 },
-      { month: 'Jul', briefLocks: 26, qaAudits: 31, approvals: 24, uploads: 48 },
-      { month: 'Aug', briefLocks: 35, qaAudits: 42, approvals: 32, uploads: 67 },
-      { month: 'Sep', briefLocks: 41, qaAudits: 48, approvals: 39, uploads: 76 },
-    ];
+    const monthsShort = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
+    const monthKeys = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+
+    const monthlyMap: Record<string, { month: string; briefLocks: number; qaAudits: number; approvals: number; uploads: number }> = {};
+    monthKeys.forEach((key, idx) => {
+      monthlyMap[key] = {
+        month: monthsShort[idx],
+        briefLocks: 0,
+        qaAudits: 0,
+        approvals: 0,
+        uploads: 0,
+      };
+    });
+
+    // Populate from real activity logs in database
+    activityLogs.forEach((log) => {
+      const ts = log.timestamp || '2026-09-01';
+      const key = ts.substring(0, 7);
+      if (monthlyMap[key]) {
+        if (log.action === 'BRIEF_LOCKED') monthlyMap[key].briefLocks += 1;
+        if (log.action === 'QA_CERTIFIED' || log.action === 'QA_SUBMITTED') monthlyMap[key].qaAudits += 1;
+        if (log.action === 'CLIENT_APPROVED') monthlyMap[key].approvals += 1;
+        if (log.action === 'DELIVERABLE_UPLOADED' || log.action === 'FILE_UPLOADED') monthlyMap[key].uploads += 1;
+      }
+    });
+
+    // Populate from versions collection in database
+    versions.forEach((v) => {
+      const ts = v.uploadedAt || '2026-09-01';
+      const key = ts.substring(0, 7);
+      if (monthlyMap[key]) {
+        monthlyMap[key].uploads += 1;
+      }
+    });
+
+    // Populate from QA submissions collection in database
+    qaSubmissions.forEach((q) => {
+      const ts = q.performedAt || '2026-09-01';
+      const key = ts.substring(0, 7);
+      if (monthlyMap[key]) {
+        monthlyMap[key].qaAudits += 1;
+      }
+    });
+
+    // Populate from Approvals collection in database
+    approvals.forEach((a) => {
+      const ts = a.approvedAt || '2026-09-01';
+      const key = ts.substring(0, 7);
+      if (monthlyMap[key]) {
+        monthlyMap[key].approvals += 1;
+      }
+    });
+
+    const monthlyEvents = Object.values(monthlyMap);
 
     return { topActions, monthlyEvents };
-  }, [activityLogs]);
+  }, [activityLogs, versions, qaSubmissions, approvals]);
 
   // Total calculated requests
   const totalRequestsCount = useMemo(() => {
