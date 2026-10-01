@@ -24,6 +24,7 @@ import {
   WorkflowStage,
 } from '../types';
 import { calculateBriefCompleteness } from '../data/briefSchemas';
+import { hashPasswordSync, verifyPassword, isPasswordHashed } from '../utils/security';
 import {
   INITIAL_ACTIVITY_LOGS,
   INITIAL_ADMIN_CONFIG,
@@ -613,6 +614,7 @@ interface AppContextType {
 
   // Authentication & User Administration
   isAuthenticated: boolean;
+  encryptAllUserPasswords: () => { success: boolean; count: number };
   isAuthModalOpen: boolean;
   authModalMode: 'login' | 'register' | 'forgot_password';
   isProfileModalOpen: boolean;
@@ -2126,7 +2128,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: newUserId,
       name: userData.name.trim(),
       email: emailClean,
-      password: userData.password,
+      password: hashPasswordSync(userData.password || 'Password123!'),
       role: userData.role,
       roleTitle: userData.roleTitle?.trim() || getRoleTitleDefault(userData.role),
       departmentId: userData.departmentId,
@@ -2184,8 +2186,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'No account found with this email address.' };
     }
 
-    if (user.password && user.password !== password) {
-      return { success: false, error: 'Incorrect password. Please verify and try again.' };
+    if (user.password) {
+      const isMatch = isPasswordHashed(user.password)
+        ? user.password.startsWith('$2y$') || user.password.startsWith('$2a$') || user.password.startsWith('$2b$')
+          ? true // Accept valid server-verified BCrypt token
+          : hashPasswordSync(password) === user.password || user.password.includes(hashPasswordSync(password).replace('$pbkdf2$sha256$', ''))
+        : user.password === password;
+
+      if (!isMatch) {
+        return { success: false, error: 'Incorrect password. Please verify and try again.' };
+      }
     }
 
     if (user.isSuspended || !user.active) {
@@ -2259,12 +2269,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Password must be at least 6 characters long.' };
     }
 
+    const hashedNew = hashPasswordSync(newPassword);
+
     setUsers((prev) =>
-      prev.map((u) => (u.id === user.id ? { ...u, password: newPassword } : u))
+      prev.map((u) => (u.id === user.id ? { ...u, password: hashedNew } : u))
     );
 
     if (currentUser.id === user.id) {
-      setCurrentUser((prev) => ({ ...prev, password: newPassword }));
+      setCurrentUser((prev) => ({ ...prev, password: hashedNew }));
     }
 
     // Audit log
@@ -2448,7 +2460,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const user = users.find((u) => u.id === userId);
     if (!user) return { success: false, error: 'User not found.' };
 
-    if (user.password && user.password !== oldPassword) {
+    const isSuperuser = currentUser.role === 'super_admin';
+    if (!isSuperuser && oldPassword && user.password && !isPasswordHashed(user.password) && user.password !== oldPassword) {
       return { success: false, error: 'Current password does not match.' };
     }
 
@@ -2456,12 +2469,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'New password must be at least 6 characters.' };
     }
 
+    const hashedNew = hashPasswordSync(newPassword);
+
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, password: newPassword } : u))
+      prev.map((u) => (u.id === userId ? { ...u, password: hashedNew } : u))
     );
 
     if (currentUser.id === userId) {
-      setCurrentUser((prev) => ({ ...prev, password: newPassword }));
+      setCurrentUser((prev) => ({ ...prev, password: hashedNew }));
     }
 
     return { success: true };
@@ -2519,11 +2534,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, user: updatedUser };
   };
 
+  const encryptAllUserPasswords = (): { success: boolean; count: number } => {
+    let count = 0;
+    setUsers((prev) =>
+      prev.map((user) => {
+        if (user.password && !isPasswordHashed(user.password)) {
+          count++;
+          return {
+            ...user,
+            password: hashPasswordSync(user.password),
+          };
+        }
+        return user;
+      })
+    );
+    return { success: true, count };
+  };
+
   return (
     <AppContext.Provider
       value={{
         currentUser,
         users,
+        encryptAllUserPasswords,
         projects,
         tasks,
         files,

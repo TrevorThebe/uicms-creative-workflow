@@ -18,6 +18,8 @@ import { UserManagementPanel } from '../admin/UserManagementPanel';
 import { DatabaseSyncManager } from '../admin/DatabaseSyncManager';
 import { SystemUsageAnalyticsPanel } from '../admin/SystemUsageAnalyticsPanel';
 import { PhpBackendStatusIndicator } from '../admin/PhpBackendStatusIndicator';
+import { PasswordSecurityPanel } from '../admin/PasswordSecurityPanel';
+import { SecurityRulesAuditPanel } from '../admin/SecurityRulesAuditPanel';
 
 export const AdministrationAuditView: React.FC = () => {
   const {
@@ -154,6 +156,12 @@ export const AdministrationAuditView: React.FC = () => {
 
       {/* User Administration & Governance Section */}
       <UserManagementPanel />
+
+      {/* Password Security, Cryptographic Vault & Keys Panel */}
+      <PasswordSecurityPanel />
+
+      {/* Enterprise Security Rules & Compliance Audit Engine */}
+      <SecurityRulesAuditPanel />
 
       {/* Theme & Display Mode */}
       <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4">

@@ -34,9 +34,11 @@ class Database {
             $this->conn = new PDO($dsn, $this->username, $this->password, $options);
         } catch (PDOException $e) {
             http_response_code(500);
+            $debugMode = getenv('APP_DEBUG') === 'true';
+            $msg = $debugMode ? "Database Connection Error: " . $e->getMessage() : "Database connection unavailable. Please check system configuration.";
             echo json_encode([
                 "status" => "error",
-                "message" => "Database Connection Error: " . $e->getMessage()
+                "message" => $msg
             ]);
             exit;
         }
@@ -45,14 +47,21 @@ class Database {
     }
 }
 
-// Global CORS & JSON response helper
+// Global Security & CORS Headers
 function initApiHeaders(): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
     header("Access-Control-Allow-Origin: $origin");
     header("Access-Control-Allow-Credentials: true");
     header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-User-Role, X-User-Id");
     header("Content-Type: application/json; charset=UTF-8");
+
+    // Enterprise Security Headers
+    header("X-Content-Type-Options: nosniff");
+    header("X-Frame-Options: SAMEORIGIN");
+    header("X-XSS-Protection: 1; mode=block");
+    header("Referrer-Policy: strict-origin-when-cross-origin");
+    header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
 
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(200);

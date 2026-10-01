@@ -33,6 +33,7 @@ export const UserManagementPanel: React.FC = () => {
     reactivateUser,
     deleteUser,
     updateUserProfile,
+    updateUserPassword,
     setIsAuthModalOpen,
     setAuthModalMode,
     forgotPassword,
@@ -50,6 +51,7 @@ export const UserManagementPanel: React.FC = () => {
   const [editDepartment, setEditDepartment] = useState<DepartmentId>('marketing');
   const [editAvatar, setEditAvatar] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('designer');
+  const [editPassword, setEditPassword] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
   // Suspension Modal State
@@ -73,6 +75,7 @@ export const UserManagementPanel: React.FC = () => {
     setEditDepartment(u.departmentId);
     setEditAvatar(u.avatar);
     setEditRole(u.role);
+    setEditPassword('');
     setEditError(null);
   };
 
@@ -84,6 +87,18 @@ export const UserManagementPanel: React.FC = () => {
     if (!editName.trim()) {
       setEditError('User name cannot be blank.');
       return;
+    }
+
+    if (editPassword.trim()) {
+      if (editPassword.trim().length < 6) {
+        setEditError('New password must be at least 6 characters in length.');
+        return;
+      }
+      const passRes = updateUserPassword(editingUser.id, '', editPassword.trim());
+      if (!passRes.success) {
+        setEditError(passRes.error || 'Failed to update user password.');
+        return;
+      }
     }
 
     const res = updateUserProfile(editingUser.id, {
@@ -683,6 +698,21 @@ export const UserManagementPanel: React.FC = () => {
                     <option value="development">Development & Engineering</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Password Reset Section */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Reset User Password (Optional)</span>
+                </label>
+                <input
+                  type="password"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Leave blank to keep existing password (min 6 chars)"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs outline-none focus:border-indigo-500 font-mono"
+                />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

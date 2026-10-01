@@ -237,6 +237,16 @@ $saveState = function (array $state, bool $onlyMissing = false) use ($db, $colle
                 if ($value !== null) $values[$column] = $value;
             }
 
+            if ($collection === 'users') {
+                if (!empty($values['password'])) {
+                    $pass = (string)$values['password'];
+                    if (!str_starts_with($pass, '$2y$') && !str_starts_with($pass, '$2a$') && !str_starts_with($pass, '$2b$') && !str_starts_with($pass, '$pbkdf2$')) {
+                        $hashedPass = password_hash($pass, PASSWORD_BCRYPT);
+                        $values['password'] = $hashedPass;
+                        $row['password'] = $hashedPass;
+                    }
+                }
+            }
             if ($collection === 'projects') {
                 if (($values['stage'] ?? '') === 'RELEASE_PUBLISH') $values['stage'] = 'FINAL_RELEASE';
                 if (($values['stage'] ?? '') === 'ARCHIVE') $values['stage'] = 'COMPLETED';
