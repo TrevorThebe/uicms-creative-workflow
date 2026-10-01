@@ -11,7 +11,10 @@ initApiHeaders();
 $uploadBase = __DIR__ . '/../uploads';
 $dirs = [
     'avatar' => $uploadBase . '/avatars',
+    'image'  => $uploadBase . '/images',
+    'images' => $uploadBase . '/images',
     'file'   => $uploadBase . '/files',
+    'files'  => $uploadBase . '/files',
 ];
 
 // Ensure directories exist
@@ -34,9 +37,18 @@ if ($method !== 'POST') {
 // 1. Support Base64 encoded payload (e.g., canvas compressed avatar upload)
 $input = json_decode(file_get_contents('php://input'), true);
 if (is_array($input) && !empty($input['base64']) && !empty($input['filename'])) {
-    $type = trim($input['type'] ?? 'avatar');
-    $targetDir = $dirs[$type] ?? $dirs['avatar'];
-    
+    $requestedType = strtolower(trim((string) ($input['type'] ?? 'image')));
+    if ($requestedType === 'avatar') {
+        $targetDir = $dirs['avatar'];
+        $urlFolder = 'avatars';
+    } elseif (in_array($requestedType, ['image', 'images', 'picture'], true)) {
+        $targetDir = $dirs['image'];
+        $urlFolder = 'images';
+    } else {
+        $targetDir = $dirs['file'];
+        $urlFolder = 'files';
+    }
+
     $base64Data = $input['base64'];
     $filename = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $input['filename']);
     
@@ -58,7 +70,7 @@ if (is_array($input) && !empty($input['base64']) && !empty($input['filename'])) 
     $targetPath = $targetDir . '/' . $uniqueName;
     
     if (file_put_contents($targetPath, $decoded) !== false) {
-        $relativeUrl = '/php-backend/uploads/' . ($type === 'avatar' ? 'avatars' : 'files') . '/' . $uniqueName;
+        $relativeUrl = '/php-backend/uploads/' . $urlFolder . '/' . $uniqueName;
         sendResponse(200, [
             'status' => 'success',
             'message' => 'Base64 asset uploaded successfully',
@@ -76,8 +88,17 @@ if (!isset($_FILES['file'])) {
 }
 
 $file = $_FILES['file'];
-$type = trim($_POST['type'] ?? 'file');
-$targetDir = $dirs[$type] ?? $dirs['file'];
+$requestedType = strtolower(trim((string) ($_POST['type'] ?? 'file')));
+if ($requestedType === 'avatar') {
+    $targetDir = $dirs['avatar'];
+    $urlFolder = 'avatars';
+} elseif (in_array($requestedType, ['image', 'images', 'picture'], true)) {
+    $targetDir = $dirs['image'];
+    $urlFolder = 'images';
+} else {
+    $targetDir = $dirs['file'];
+    $urlFolder = 'files';
+}
 
 if ($file['error'] !== UPLOAD_ERR_OK) {
     sendResponse(400, ['status' => 'error', 'message' => 'PHP file upload error code: ' . $file['error']]);
@@ -102,7 +123,7 @@ $uniqueName = uniqid() . '_' . $safeName . '.' . $ext;
 $targetPath = $targetDir . '/' . $uniqueName;
 
 if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-    $relativeUrl = '/php-backend/uploads/' . ($type === 'avatar' ? 'avatars' : 'files') . '/' . $uniqueName;
+    $relativeUrl = '/php-backend/uploads/' . $urlFolder . '/' . $uniqueName;
     sendResponse(200, [
         'status' => 'success',
         'message' => 'File uploaded successfully',
