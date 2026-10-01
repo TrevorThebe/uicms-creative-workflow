@@ -607,7 +607,7 @@ interface AppContextType {
   updateUserPassword: (userId: string, oldPassword: string, newPassword: string) => { success: boolean; error?: string };
   updateUserProfile: (
     userId: string,
-    updates: Partial<Pick<User, 'name' | 'email' | 'avatar' | 'roleTitle' | 'departmentId'>>
+    updates: Partial<Pick<User, 'name' | 'email' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
   ) => { success: boolean; error?: string; user?: User };
 }
 
@@ -2438,7 +2438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUserProfile = (
     userId: string,
-    updates: Partial<Pick<User, 'name' | 'email' | 'avatar' | 'roleTitle' | 'departmentId'>>
+    updates: Partial<Pick<User, 'name' | 'email' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
   ): { success: boolean; error?: string; user?: User } => {
     const user = users.find((u) => u.id === userId);
     if (!user) return { success: false, error: 'User account not found.' };
@@ -2451,6 +2451,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    const isRoleChanged = updates.role !== undefined && updates.role !== user.role;
+
     const updatedUser: User = {
       ...user,
       ...updates,
@@ -2459,6 +2461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       roleTitle: updates.roleTitle !== undefined ? updates.roleTitle.trim() : user.roleTitle,
       avatar: updates.avatar !== undefined ? updates.avatar : user.avatar,
       departmentId: updates.departmentId !== undefined ? updates.departmentId : user.departmentId,
+      role: updates.role !== undefined ? updates.role : user.role,
     };
 
     setUsers((prev) => prev.map((u) => (u.id === userId ? updatedUser : u)));
@@ -2472,10 +2475,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newLog: ActivityLog = {
       id: logId,
       projectId: 'SYSTEM',
-      userId: updatedUser.id,
-      userName: updatedUser.name,
-      action: 'USER_PROFILE_UPDATED',
-      description: `User profile details/avatar updated for ${updatedUser.name} (${updatedUser.email}).`,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      action: isRoleChanged ? 'USER_ROLE_ALLOCATED' : 'USER_PROFILE_UPDATED',
+      description: isRoleChanged
+        ? `Role reallocated for ${updatedUser.name} (${updatedUser.email}): ${user.role} ➔ ${updatedUser.role} by ${currentUser.name}.`
+        : `User profile updated for ${updatedUser.name} (${updatedUser.email}) by ${currentUser.name}.`,
       timestamp: new Date().toISOString(),
     };
     setActivityLogs((prev) => [newLog, ...prev]);

@@ -49,6 +49,7 @@ export const UserManagementPanel: React.FC = () => {
   const [editRoleTitle, setEditRoleTitle] = useState('');
   const [editDepartment, setEditDepartment] = useState<DepartmentId>('marketing');
   const [editAvatar, setEditAvatar] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('designer');
   const [editError, setEditError] = useState<string | null>(null);
 
   // Suspension Modal State
@@ -71,6 +72,7 @@ export const UserManagementPanel: React.FC = () => {
     setEditRoleTitle(u.roleTitle);
     setEditDepartment(u.departmentId);
     setEditAvatar(u.avatar);
+    setEditRole(u.role);
     setEditError(null);
   };
 
@@ -89,14 +91,26 @@ export const UserManagementPanel: React.FC = () => {
       roleTitle: editRoleTitle.trim(),
       departmentId: editDepartment,
       avatar: editAvatar,
+      role: editRole,
     });
 
     if (res.success) {
-      setActionSuccess(`Profile & avatar updated for ${editName}.`);
+      setActionSuccess(`Profile & role allocated for ${editName} (${editRole.replace('_', ' ')}).`);
       setEditingUser(null);
       setTimeout(() => setActionSuccess(null), 3500);
     } else {
       setEditError(res.error || 'Failed to update user profile.');
+    }
+  };
+
+  const handleQuickRoleAllocate = (user: User, newRole: UserRole) => {
+    if (user.role === newRole) return;
+    const res = updateUserProfile(user.id, { role: newRole });
+    if (res.success) {
+      setActionSuccess(`Role for ${user.name} allocated to ${newRole.replace('_', ' ').toUpperCase()}.`);
+      setTimeout(() => setActionSuccess(null), 3000);
+    } else {
+      alert(res.error || 'Failed to reallocate role.');
     }
   };
 
@@ -301,25 +315,53 @@ export const UserManagementPanel: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Role Badge */}
+                      {/* Role Allocation Badge & Selector */}
                       <td className="py-3 px-4">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            u.role === 'super_admin'
-                              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                              : u.role === 'department_manager'
-                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                              : u.role === 'qa_user'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : u.role === 'designer'
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : u.role === 'client'
-                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                              : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                          }`}
-                        >
-                          {u.role.replace('_', ' ').toUpperCase()}
-                        </span>
+                        {isSuperAdmin ? (
+                          <select
+                            value={u.role}
+                            onChange={(e) => handleQuickRoleAllocate(u, e.target.value as UserRole)}
+                            title="Reallocate role permissions"
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold border outline-none cursor-pointer transition-all ${
+                              u.role === 'super_admin'
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-500/50 focus:border-purple-400'
+                                : u.role === 'department_manager'
+                                ? 'bg-blue-950/80 text-blue-300 border-blue-500/50 focus:border-blue-400'
+                                : u.role === 'qa_user'
+                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 focus:border-emerald-400'
+                                : u.role === 'designer'
+                                ? 'bg-amber-950/80 text-amber-300 border-amber-500/50 focus:border-amber-400'
+                                : u.role === 'client'
+                                ? 'bg-rose-950/80 text-rose-300 border-rose-500/50 focus:border-rose-400'
+                                : 'bg-cyan-950/80 text-cyan-300 border-cyan-500/50 focus:border-cyan-400'
+                            }`}
+                          >
+                            <option value="super_admin" className="bg-slate-900 text-purple-300">SUPER ADMIN</option>
+                            <option value="department_manager" className="bg-slate-900 text-blue-300">DEPT MANAGER</option>
+                            <option value="account_manager" className="bg-slate-900 text-cyan-300">ACCOUNT MGR</option>
+                            <option value="designer" className="bg-slate-900 text-amber-300">DESIGNER / PRODUCER</option>
+                            <option value="qa_user" className="bg-slate-900 text-emerald-300">QA LEAD</option>
+                            <option value="client" className="bg-slate-900 text-rose-300">CLIENT APPROVER</option>
+                          </select>
+                        ) : (
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              u.role === 'super_admin'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                : u.role === 'department_manager'
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : u.role === 'qa_user'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : u.role === 'designer'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : u.role === 'client'
+                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                            }`}
+                          >
+                            {u.role.replace('_', ' ').toUpperCase()}
+                          </span>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -579,6 +621,38 @@ export const UserManagementPanel: React.FC = () => {
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              {/* System Governance Role Allocation */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Allocated System Role & Governance Level</span>
+                  </label>
+                  {isSuperAdmin && (
+                    <span className="text-[10px] font-bold text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
+                      Superuser Authority
+                    </span>
+                  )}
+                </div>
+
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as UserRole)}
+                  disabled={!isSuperAdmin && !isManager}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs outline-none focus:border-indigo-500 font-semibold"
+                >
+                  <option value="super_admin">⚡ Super Admin (Full Governance, Audits & System Config)</option>
+                  <option value="department_manager">👔 Department Manager (Oversight, Allocations & Approvals)</option>
+                  <option value="account_manager">📁 Account Manager (Client Relations & Brief Intake)</option>
+                  <option value="designer">🎨 Designer / Creative Producer (Deliverables & Workloads)</option>
+                  <option value="qa_user">🔍 QA Specialist (14-Point Pre-flight Audit & Certification)</option>
+                  <option value="client">🏢 Client Approver (Brand Digital Approvals & Sign-offs)</option>
+                </select>
+                <p className="text-[10px] text-slate-400">
+                  Allocating a role updates permissions across all modules, project stage gates, and audit trails.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
