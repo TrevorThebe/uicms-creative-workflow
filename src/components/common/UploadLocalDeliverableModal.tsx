@@ -18,7 +18,6 @@ import {
   formatBytes,
   isImageFile,
   isPdfFile,
-  saveLocalFileBlob,
 } from '../../utils/localFileStore';
 
 interface UploadLocalDeliverableModalProps {
@@ -164,17 +163,8 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
             : 'Linked external asset resource.'),
       });
 
-      // If local file was uploaded with data URL, also store in IndexedDB
-      if (fileDataUrl && createdFile?.id) {
-        await saveLocalFileBlob(
-          createdFile.id,
-          filename.trim(),
-          mimeType,
-          fileSize,
-          fileDataUrl
-        );
-      }
-
+      // Persist the canonical asset on the backend storage folders.
+      // Browser IndexedDB is no longer used for uploaded file persistence.
       setSuccessMessage(`File "${filename.trim()}" successfully uploaded to enterprise vault!`);
       if (onFileUploaded && createdFile) {
         onFileUploaded(createdFile);

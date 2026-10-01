@@ -26,7 +26,6 @@ import {
 import { calculateBriefCompleteness } from '../data/briefSchemas';
 import { hashPasswordSync, verifyPassword, isPasswordHashed } from '../utils/security';
 import {
-  saveLocalFileBlob,
   getAllStoredFileDataUrls,
   deleteLocalFileBlob,
 } from '../utils/localFileStore';
@@ -471,23 +470,8 @@ const fetchDatabaseState = async () => {
         adminConfig: normalizeAdminConfig(dataset.admin_settings ?? dataset.adminSettings ?? dataset.adminConfig ?? EMPTY_ADMIN_CONFIG),
       };
 
-      // Sourced 100% from phpMyAdmin database - no local storage merging to prevent drift.
-      if (nextState.users.length === 0 && nextState.projects.length === 0) {
-        nextState.users = INITIAL_USERS;
-        nextState.projects = INITIAL_PROJECTS;
-        nextState.tasks = INITIAL_TASKS;
-        nextState.files = INITIAL_FILES;
-        nextState.versions = INITIAL_VERSIONS;
-        nextState.qaSubmissions = INITIAL_QA_SUBMISSIONS;
-        nextState.approvals = INITIAL_APPROVALS;
-        nextState.feedbackItems = INITIAL_FEEDBACK;
-        nextState.notifications = INITIAL_NOTIFICATIONS;
-        nextState.chatMessages = INITIAL_CHAT_MESSAGES;
-        nextState.activityLogs = INITIAL_ACTIVITY_LOGS;
-        nextState.clients = INITIAL_CLIENTS;
-        nextState.adminConfig = INITIAL_ADMIN_CONFIG;
-      }
-
+      // Preserve an intentionally empty database as empty. Do not auto-reseed
+      // demo records when the backend reports that all collections are empty.
       return nextState;
     } catch {
       // Ignore unreachable endpoints and try the next candidate.
@@ -787,6 +771,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           );
           setIsAuthenticated(true);
         } else {
+          setCurrentUser(EMPTY_USER);
           setIsAuthenticated(false);
           setIsAuthModalOpen(true);
           setAuthModalMode('login');
@@ -1507,16 +1492,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setFiles((prev) => [newFile, ...prev]);
 
-    if (newFile.url && newFile.url.startsWith('data:')) {
-      saveLocalFileBlob(
-        newFile.id,
-        newFile.filename,
-        newFile.type,
-        newFile.size,
-        newFile.url
-      ).catch(() => {});
-    }
-
+    // Uploaded files are persisted on the server-side upload endpoint.
+    // Do not mirror every uploaded asset into browser storage.
     logActivity(
       newFile.projectId,
       'FILE_UPLOADED',
@@ -1560,15 +1537,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setVersions((prev) => [newVersion, ...prev]);
 
-    if (newVersion.fileUrl && newVersion.fileUrl.startsWith('data:')) {
-      saveLocalFileBlob(
-        newVersion.id,
-        newVersion.title,
-        'application/pdf',
-        '2.4 MB',
-        newVersion.fileUrl
-      ).catch(() => {});
-    }
+    // Uploaded deliverables are persisted on the server-side upload endpoint.
+    // Avoid storing duplicate local copies in browser storage.
 
     // Update project version reference & advance stage to INTERNAL_QA
     const project = projects.find((p) => p.id === newVersion.projectId);
