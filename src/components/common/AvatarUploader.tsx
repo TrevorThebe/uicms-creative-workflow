@@ -7,10 +7,8 @@ import {
   Globe,
   Image as ImageIcon,
   RotateCcw,
-  Sparkles,
   Trash2,
   Upload,
-  User as UserIcon,
   X,
 } from 'lucide-react';
 
@@ -82,9 +80,8 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
   onAvatarChange,
   userName = 'User',
   label = 'Profile Photo / Avatar',
-  helperText = 'Upload a custom photo (PNG, JPG, WebP up to 5MB) or select a team preset.',
+  helperText = 'Upload a custom photo (PNG, JPG, WebP) or enter an image URL.',
   size = 'lg',
-  showPresets = true,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -96,7 +93,6 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
   // Check if current avatar is a custom data URL or custom URL
   const isCustomUploaded = currentAvatar?.startsWith('data:image/');
-  const isPreset = DEFAULT_AVATAR_PRESETS.some((p) => p.url === currentAvatar);
 
   const handleFileProcess = (file: File) => {
     setUploadError(null);
@@ -259,7 +255,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
             {label}
           </label>
           <span className="text-[10px] text-slate-400">
-            {isCustomUploaded ? 'Custom Photo' : isPreset ? 'Team Preset' : 'Linked Image'}
+            {isCustomUploaded ? 'Custom Photo' : currentAvatar?.startsWith('http') ? 'Linked Image' : 'Profile Photo'}
           </span>
         </div>
       )}
@@ -289,7 +285,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
             </div>
             {isCustomUploaded && (
               <span
-                title="Custom uploaded image"
+                title="Custom uploaded photo"
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-md border-2 border-slate-900"
               >
                 <Check className="w-3 h-3" />
@@ -307,7 +303,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
                 className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>{isProcessing ? 'Processing...' : 'Upload Image'}</span>
+                <span>{isProcessing ? 'Processing...' : 'Upload Photo'}</span>
               </button>
 
               <button
@@ -324,7 +320,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
                   type="button"
                   onClick={handleResetToDefault}
                   className="px-2 py-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 text-xs font-medium flex items-center gap-1 transition-colors"
-                  title="Reset to preset avatar"
+                  title="Clear photo"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Reset</span>
@@ -334,7 +330,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
             <p className="text-[11px] text-slate-400 leading-tight">
               {isDragging ? (
-                <span className="text-indigo-400 font-semibold">Drop your image file here to set as avatar!</span>
+                <span className="text-indigo-400 font-semibold">Drop your image file here to set as photo!</span>
               ) : (
                 helperText
               )}
@@ -358,7 +354,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
               type="url"
               value={customUrl}
               onChange={(e) => setCustomUrl(e.target.value)}
-              placeholder="https://example.com/my-avatar.jpg"
+              placeholder="https://example.com/my-photo.jpg"
               className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
             <button
@@ -392,52 +388,6 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
           </div>
         )}
       </div>
-
-      {/* Team Avatar Presets Gallery */}
-      {showPresets && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="font-semibold text-slate-300 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              Or Choose from Team Presets:
-            </span>
-            <span className="text-slate-500 text-[10px]">{DEFAULT_AVATAR_PRESETS.length} Available</span>
-          </div>
-
-          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 py-1">
-            {DEFAULT_AVATAR_PRESETS.map((preset, idx) => {
-              const isSelected = currentAvatar === preset.url;
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    onAvatarChange(preset.url);
-                    setUploadError(null);
-                  }}
-                  title={preset.label}
-                  className={`relative group rounded-xl overflow-hidden aspect-square transition-all ${
-                    isSelected
-                      ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-950 scale-105 shadow-md shadow-indigo-500/20'
-                      : 'opacity-70 hover:opacity-100 hover:scale-105'
-                  }`}
-                >
-                  <img
-                    src={preset.url}
-                    alt={preset.label}
-                    className="w-full h-full object-cover"
-                  />
-                  {isSelected && (
-                    <div className="absolute inset-0 bg-indigo-600/30 flex items-center justify-center">
-                      <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -25,6 +25,7 @@ export const UserProfileModal: React.FC = () => {
     setIsProfileModalOpen,
     updateUserProfile,
     updateUserPassword,
+    resetUserEmail,
     deleteUser,
     logoutUser,
     users,
@@ -38,6 +39,13 @@ export const UserProfileModal: React.FC = () => {
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
 
+  // Email Reset State
+  const [workEmail, setWorkEmail] = useState(currentUser.email);
+  const [personalEmail, setPersonalEmail] = useState(currentUser.personalEmail || '');
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [isResettingEmail, setIsResettingEmail] = useState(false);
+
   // Sync state when currentUser changes or modal opens
   useEffect(() => {
     if (isProfileModalOpen) {
@@ -45,8 +53,12 @@ export const UserProfileModal: React.FC = () => {
       setRoleTitle(currentUser.roleTitle);
       setDepartmentId(currentUser.departmentId);
       setAvatar(currentUser.avatar);
+      setWorkEmail(currentUser.email);
+      setPersonalEmail(currentUser.personalEmail || '');
       setProfileSuccess(null);
       setProfileError(null);
+      setEmailSuccess(null);
+      setEmailError(null);
       setPasswordSuccess(null);
       setPasswordError(null);
     }
@@ -90,6 +102,37 @@ export const UserProfileModal: React.FC = () => {
       setProfileSuccess('Profile and avatar updated successfully!');
       setTimeout(() => setProfileSuccess(null), 3500);
     }
+  };
+
+  const handleEmailReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    const cleanWork = workEmail.trim().toLowerCase();
+    const cleanPersonal = personalEmail.trim().toLowerCase();
+
+    if (!cleanWork || !cleanWork.includes('@') || !cleanWork.includes('.')) {
+      setEmailError('Please enter a valid work email address format.');
+      return;
+    }
+
+    if (cleanPersonal && (!cleanPersonal.includes('@') || !cleanPersonal.includes('.'))) {
+      setEmailError('Please enter a valid personal email address format.');
+      return;
+    }
+
+    setIsResettingEmail(true);
+    setTimeout(() => {
+      const res = resetUserEmail(currentUser.id, cleanWork, cleanPersonal || undefined);
+      setIsResettingEmail(false);
+      if (!res.success) {
+        setEmailError(res.error || 'Failed to reset email address.');
+      } else {
+        setEmailSuccess('Email address reset successfully! Temporary passwords and recovery notices will be delivered to your personal email.');
+        setTimeout(() => setEmailSuccess(null), 4000);
+      }
+    }, 250);
   };
 
   const handlePasswordChange = (e: React.FormEvent) => {
@@ -197,13 +240,13 @@ export const UserProfileModal: React.FC = () => {
                 currentAvatar={avatar}
                 onAvatarChange={(newAvatar) => setAvatar(newAvatar)}
                 userName={name || currentUser.name}
-                label="Account Profile Photo / Avatar"
-                helperText="Upload a custom photo (drag & drop or click Upload), use an external image URL, or choose a team preset."
+                label="Account Profile Photo"
+                helperText="Upload your custom photo (PNG, JPG, WebP) or enter an image URL."
                 size="lg"
-                showPresets={true}
+                showPresets={false}
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">
                     Display Name <span className="text-rose-400">*</span>
@@ -217,23 +260,6 @@ export const UserProfileModal: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                    Work Email (Read-only)
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input
-                      type="email"
-                      disabled
-                      value={currentUser.email}
-                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900/50 border border-slate-800 text-slate-400 text-xs outline-none cursor-not-allowed"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">
                     Job Title / Role Designation
@@ -270,7 +296,91 @@ export const UserProfileModal: React.FC = () => {
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Update Profile & Avatar</span>
+                  <span>Update Profile & Photo</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Section 2: Email & Account Recovery Settings (Reset Email in App) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-indigo-400" />
+                <h3 className="font-bold text-white uppercase tracking-wider text-[11px]">
+                  Email Addresses & Account Recovery
+                </h3>
+              </div>
+              <span className="text-[10px] text-indigo-300 bg-indigo-950/80 px-2.5 py-0.5 rounded-full border border-indigo-500/30 font-medium">
+                Reset Email in App
+              </span>
+            </div>
+
+            {emailError && (
+              <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300">
+                {emailError}
+              </div>
+            )}
+            {emailSuccess && (
+              <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>{emailSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEmailReset} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Work Email (Account Login) <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="email"
+                      required
+                      value={workEmail}
+                      onChange={(e) => setWorkEmail(e.target.value)}
+                      placeholder="e.g. your.name@uicms.com"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 focus:border-indigo-500 text-white text-xs outline-none"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Primary login identity for this account.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Personal Email (Temporary Password Delivery)
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="email"
+                      value={personalEmail}
+                      onChange={(e) => setPersonalEmail(e.target.value)}
+                      placeholder="e.g. personal.name@gmail.com"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 focus:border-indigo-500 text-white text-xs outline-none"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Temporary passwords and recovery codes are sent to this address.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-slate-400">
+                  Update or reset your work & personal email addresses anytime.
+                </span>
+                <button
+                  type="submit"
+                  disabled={isResettingEmail}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isResettingEmail ? 'Updating Email...' : 'Reset & Save Email'}</span>
                 </button>
               </div>
             </form>

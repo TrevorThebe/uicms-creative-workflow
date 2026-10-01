@@ -832,14 +832,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Complete MySQL / PostgreSQL DDL Schema & Enterprise Seeds
               </h4>
             </div>
-            <a
-              href="/database_seed.sql"
-              download="database_seed.sql"
-              className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download database_seed.sql</span>
-            </a>
+            <div className="flex items-center gap-2">
+              <a
+                href="/clean_database.sql"
+                download="clean_database.sql"
+                className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700"
+                title="Download SQL script to clean all data while keeping tables"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Download clean_database.sql</span>
+              </a>
+              <a
+                href="/database_seed.sql"
+                download="database_seed.sql"
+                className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download database_seed.sql</span>
+              </a>
+            </div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">

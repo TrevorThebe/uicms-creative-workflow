@@ -50,6 +50,7 @@ const EMPTY_USER: User = {
   id: 'usr-admin',
   name: 'Eleanor Vance',
   email: 'eleanor.vance@uicms.com',
+  personalEmail: 'eleanor.vance@gmail.com',
   password: 'Password123!',
   role: 'super_admin',
   roleTitle: 'Chief Operations & Systems Administrator',
@@ -642,8 +643,23 @@ interface AppContextType {
     avatar?: string;
   }) => { success: boolean; error?: string; user?: User };
   loginUser: (email: string, password: string) => { success: boolean; error?: string; user?: User };
-  forgotPassword: (email: string) => { success: boolean; error?: string; resetToken?: string };
+  forgotPassword: (
+    emailOrPersonal: string,
+    personalEmailOverride?: string
+  ) => {
+    success: boolean;
+    error?: string;
+    resetToken?: string;
+    tempPassword?: string;
+    sentToEmail?: string;
+    user?: User;
+  };
   resetPassword: (email: string, resetToken: string, newPassword: string) => { success: boolean; error?: string };
+  resetUserEmail: (
+    userId: string,
+    newWorkEmail: string,
+    newPersonalEmail?: string
+  ) => { success: boolean; error?: string; user?: User };
   logoutUser: () => void;
   suspendUser: (userId: string, reason: string) => { success: boolean; error?: string };
   reactivateUser: (userId: string) => { success: boolean; error?: string };
@@ -651,7 +667,7 @@ interface AppContextType {
   updateUserPassword: (userId: string, oldPassword: string, newPassword: string) => { success: boolean; error?: string };
   updateUserProfile: (
     userId: string,
-    updates: Partial<Pick<User, 'name' | 'email' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
+    updates: Partial<Pick<User, 'name' | 'email' | 'personalEmail' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
   ) => { success: boolean; error?: string; user?: User };
 }
 
@@ -2364,7 +2380,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password: string
   ): { success: boolean; error?: string; user?: User } => {
     const emailClean = email.trim().toLowerCase();
-    const user = users.find((u) => u.email.toLowerCase() === emailClean);
+    const user = users.find(
+      (u) =>
+        u.email.toLowerCase() === emailClean ||
+        (u.personalEmail && u.personalEmail.toLowerCase() === emailClean)
+    );
 
     if (!user) {
       return { success: false, error: 'No account found with this email address.' };
@@ -2413,7 +2433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userId: user.id,
       userName: user.name,
       action: 'USER_LOGIN',
-      description: `${user.name} logged into the system portal.`,
+      description: `${user.name} logged into the system portal${user.isTempPassword ? ' using a temporary password' : ''}.`,
       timestamp: new Date().toISOString(),
     };
     setActivityLogs((prev) => [newLog, ...prev]);
@@ -2422,18 +2442,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const forgotPassword = (
-    email: string
-  ): { success: boolean; error?: string; resetToken?: string } => {
-    const emailClean = email.trim().toLowerCase();
-    const user = users.find((u) => u.email.toLowerCase() === emailClean);
+    emailOrPersonal: string,
+    personalEmailOverride?: string
+  ): {
+    success: boolean;
+    error?: string;
+    resetToken?: string;
+    tempPassword?: string;
+    sentToEmail?: string;
+    user?: User;
+  } => {
+    const emailClean = emailOrPersonal.trim().toLowerCase();
+    const user = users.find(
+      (u) =>
+        u.email.toLowerCase() === emailClean ||
+        (u.personalEmail && u.personalEmail.toLowerCase() === emailClean)
+    );
 
     if (!user) {
-      return { success: false, error: 'No user account found with that email address.' };
+      return { success: false, error: 'No user account found matching that email address.' };
     }
 
-    const resetToken = `SEC-${Math.floor(100000 + Math.random() * 900000)}`;
+    // Determine the personal recovery email
+    const recipientPersonalEmail =
+      personalEmailOverride?.trim().toLowerCase() ||
+      user.personalEmail?.trim().toLowerCase() ||
+      `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@gmail.com`;
 
-    // Log simulated reset dispatch
+    // Generate secure temporary password, e.g. Tmp#749281
+    const randomPin = Math.floor(100000 + Math.random() * 900000);
+    const tempPassword = `Tmp#${randomPin}`;
+    const resetToken = `SEC-${randomPin}`;
+    const hashedTemp = hashPasswordSync(tempPassword);
+
+    const updatedUser: User = {
+      ...user,
+      password: hashedTemp,
+      personalEmail: recipientPersonalEmail,
+      isTempPassword: true,
+      mustChangePassword: true,
+      tempPasswordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? updatedUser : u)));
+
+    if (currentUser.id === user.id) {
+      setCurrentUser(updatedUser);
+    }
+
+    // Log temporary password dispatch
     const logId = `log-${Date.now()}`;
     const newLog: ActivityLog = {
       id: logId,
@@ -2441,12 +2498,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userId: user.id,
       userName: user.name,
       action: 'PASSWORD_RESET_REQUESTED',
-      description: `Password recovery token generated for ${user.email} (Token: ${resetToken}).`,
+      description: `Temporary password dispatched to personal email (${recipientPersonalEmail}) for account ${user.email}.`,
       timestamp: new Date().toISOString(),
     };
     setActivityLogs((prev) => [newLog, ...prev]);
 
-    return { success: true, resetToken };
+    return {
+      success: true,
+      resetToken,
+      tempPassword,
+      sentToEmail: recipientPersonalEmail,
+      user: updatedUser,
+    };
+  };
+
+  const resetUserEmail = (
+    userId: string,
+    newWorkEmail: string,
+    newPersonalEmail?: string
+  ): { success: boolean; error?: string; user?: User } => {
+    const user = users.find((u) => u.id === userId);
+    if (!user) {
+      return { success: false, error: 'User account not found.' };
+    }
+
+    const cleanWorkEmail = newWorkEmail.trim().toLowerCase();
+    if (!cleanWorkEmail || !cleanWorkEmail.includes('@') || !cleanWorkEmail.includes('.')) {
+      return { success: false, error: 'Please enter a valid work email address.' };
+    }
+
+    const duplicate = users.find(
+      (u) => u.id !== userId && u.email.toLowerCase() === cleanWorkEmail
+    );
+    if (duplicate) {
+      return { success: false, error: 'This email address is already assigned to another user.' };
+    }
+
+    let cleanPersonal = user.personalEmail;
+    if (newPersonalEmail !== undefined) {
+      const p = newPersonalEmail.trim().toLowerCase();
+      if (p && (!p.includes('@') || !p.includes('.'))) {
+        return { success: false, error: 'Please enter a valid personal email address format.' };
+      }
+      cleanPersonal = p || undefined;
+    }
+
+    const updatedUser: User = {
+      ...user,
+      email: cleanWorkEmail,
+      personalEmail: cleanPersonal,
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === userId ? updatedUser : u)));
+
+    if (currentUser.id === userId) {
+      setCurrentUser(updatedUser);
+      try {
+        const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          parsed.email = cleanWorkEmail;
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(parsed));
+        }
+      } catch (err) {
+        console.error('Failed to update session email', err);
+      }
+    }
+
+    // Audit log
+    const logId = `log-${Date.now()}`;
+    const newLog: ActivityLog = {
+      id: logId,
+      projectId: 'SYSTEM',
+      userId: user.id,
+      userName: user.name,
+      action: 'USER_EMAIL_RESET',
+      description: `Email address was reset for user ${user.name}. Work: ${cleanWorkEmail}${cleanPersonal ? `, Personal: ${cleanPersonal}` : ''}`,
+      timestamp: new Date().toISOString(),
+    };
+    setActivityLogs((prev) => [newLog, ...prev]);
+
+    return { success: true, user: updatedUser };
   };
 
   const resetPassword = (
@@ -2681,7 +2813,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUserProfile = (
     userId: string,
-    updates: Partial<Pick<User, 'name' | 'email' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
+    updates: Partial<Pick<User, 'name' | 'email' | 'personalEmail' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
   ): { success: boolean; error?: string; user?: User } => {
     const user = users.find((u) => u.id === userId);
     if (!user) return { success: false, error: 'User account not found.' };
@@ -2701,6 +2833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...updates,
       name: updates.name !== undefined ? updates.name.trim() : user.name,
       email: updates.email !== undefined ? updates.email.trim().toLowerCase() : user.email,
+      personalEmail: updates.personalEmail !== undefined ? updates.personalEmail.trim().toLowerCase() : user.personalEmail,
       roleTitle: updates.roleTitle !== undefined ? updates.roleTitle.trim() : user.roleTitle,
       avatar: updates.avatar !== undefined ? updates.avatar : user.avatar,
       departmentId: updates.departmentId !== undefined ? updates.departmentId : user.departmentId,
@@ -2804,6 +2937,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginUser,
         forgotPassword,
         resetPassword,
+        resetUserEmail,
         logoutUser,
         suspendUser,
         reactivateUser,

@@ -47,6 +47,8 @@ export const UserManagementPanel: React.FC = () => {
   // Edit User Modal State
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPersonalEmail, setEditPersonalEmail] = useState('');
   const [editRoleTitle, setEditRoleTitle] = useState('');
   const [editDepartment, setEditDepartment] = useState<DepartmentId>('marketing');
   const [editAvatar, setEditAvatar] = useState('');
@@ -71,6 +73,8 @@ export const UserManagementPanel: React.FC = () => {
   const handleOpenEdit = (u: User) => {
     setEditingUser(u);
     setEditName(u.name);
+    setEditEmail(u.email);
+    setEditPersonalEmail(u.personalEmail || '');
     setEditRoleTitle(u.roleTitle);
     setEditDepartment(u.departmentId);
     setEditAvatar(u.avatar);
@@ -89,6 +93,11 @@ export const UserManagementPanel: React.FC = () => {
       return;
     }
 
+    if (!editEmail.trim() || !editEmail.includes('@')) {
+      setEditError('Please enter a valid work email address.');
+      return;
+    }
+
     if (editPassword.trim()) {
       if (editPassword.trim().length < 6) {
         setEditError('New password must be at least 6 characters in length.');
@@ -103,6 +112,8 @@ export const UserManagementPanel: React.FC = () => {
 
     const res = updateUserProfile(editingUser.id, {
       name: editName.trim(),
+      email: editEmail.trim(),
+      personalEmail: editPersonalEmail.trim() || undefined,
       roleTitle: editRoleTitle.trim(),
       departmentId: editDepartment,
       avatar: editAvatar,
@@ -173,8 +184,8 @@ export const UserManagementPanel: React.FC = () => {
   const handleSendRecoveryPin = (u: User) => {
     const res = forgotPassword(u.email);
     if (res.success) {
-      setActionSuccess(`Recovery PIN (${res.resetToken}) generated for ${u.name} (${u.email}).`);
-      setTimeout(() => setActionSuccess(null), 4000);
+      setActionSuccess(`Temporary password (${res.tempPassword}) dispatched to personal email (${res.sentToEmail}) for ${u.name}.`);
+      setTimeout(() => setActionSuccess(null), 5000);
     }
   };
 
@@ -620,22 +631,54 @@ export const UserManagementPanel: React.FC = () => {
                 currentAvatar={editAvatar}
                 onAvatarChange={setEditAvatar}
                 userName={editName}
-                label="Profile Avatar"
-                helperText="Upload image or select a preset avatar for this user."
+                label="Profile Photo"
+                helperText="Upload a photo (PNG, JPG, WebP) or enter an image URL."
                 size="md"
+                showPresets={false}
               />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Full Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Work Email (Login Identity) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Full Name <span className="text-rose-400">*</span>
+                  Personal Email (Temporary Password Delivery)
                 </label>
                 <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  type="email"
+                  value={editPersonalEmail}
+                  onChange={(e) => setEditPersonalEmail(e.target.value)}
+                  placeholder="e.g. personal.address@gmail.com"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Recovery PINs and temporary login passwords are sent to this personal address.
+                </p>
               </div>
 
               {/* System Governance Role Allocation */}

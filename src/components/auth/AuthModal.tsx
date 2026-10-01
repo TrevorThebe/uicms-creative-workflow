@@ -4,12 +4,16 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
+  Check,
   CheckCircle2,
+  Copy,
   Eye,
   EyeOff,
   KeyRound,
   Lock,
   Mail,
+  RefreshCw,
+  Send,
   Shield,
   ShieldAlert,
   Sparkles,
@@ -44,6 +48,7 @@ export const AuthModal: React.FC = () => {
     registerUser,
     forgotPassword,
     resetPassword,
+    resetUserEmail,
     inactivityNotice,
     setInactivityNotice,
     users,
@@ -52,7 +57,7 @@ export const AuthModal: React.FC = () => {
 
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('Password123!');
+  const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -68,14 +73,27 @@ export const AuthModal: React.FC = () => {
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_PRESETS[0]);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  // Forgot Password State
+  // Forgot Password / Recovery State
   const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [personalRecoveryEmail, setPersonalRecoveryEmail] = useState('');
+  const [dispatchedTempPassword, setDispatchedTempPassword] = useState('');
+  const [dispatchedToEmail, setDispatchedToEmail] = useState('');
+  const [copiedTemp, setCopiedTemp] = useState(false);
   const [generatedToken, setGeneratedToken] = useState('');
   const [inputToken, setInputToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
+
+  // Email Reset inside recovery
+  const [showEmailResetInRecovery, setShowEmailResetInRecovery] = useState(false);
+  const [recoveryResetOldEmail, setRecoveryResetOldEmail] = useState('');
+  const [recoveryResetNewEmail, setRecoveryResetNewEmail] = useState('');
+  const [recoveryResetPersonalEmail, setRecoveryResetPersonalEmail] = useState('');
+  const [recoveryResetSuccess, setRecoveryResetSuccess] = useState<string | null>(null);
+  const [recoveryResetError, setRecoveryResetError] = useState<string | null>(null);
+  const [isResettingEmail, setIsResettingEmail] = useState(false);
 
   // Feedback messages
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -115,19 +133,6 @@ export const AuthModal: React.FC = () => {
         setIsAuthModalOpen(false);
       }
     }, 200);
-  };
-
-  // Quick Demo Login
-  const handleQuickDemoLogin = (email: string) => {
-    resetMessages();
-    setLoginEmail(email);
-    setLoginPassword('Password123!');
-    const res = loginUser(email, 'Password123!');
-    if (!res.success) {
-      setErrorMessage(res.error || 'Authentication error.');
-    } else {
-      setIsAuthModalOpen(false);
-    }
   };
 
   // 2. Handle Registration
@@ -180,29 +185,105 @@ export const AuthModal: React.FC = () => {
     }, 300);
   };
 
-  // 3. Handle Forgot Password Steps
+  // 3. Handle Account Recovery & Temporary Password Dispatch
   const handleForgotRequest = (e: React.FormEvent) => {
     e.preventDefault();
     resetMessages();
 
     if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
-      setErrorMessage('Please enter your registered email address.');
+      setErrorMessage('Please enter your account email address.');
+      return;
+    }
+
+    if (personalRecoveryEmail.trim() && (!personalRecoveryEmail.includes('@') || !personalRecoveryEmail.includes('.'))) {
+      setErrorMessage('Please enter a valid personal email address format.');
       return;
     }
 
     setIsLoading(true);
     setTimeout(() => {
-      const res = forgotPassword(forgotEmail);
+      const res = forgotPassword(forgotEmail, personalRecoveryEmail.trim() || undefined);
       setIsLoading(false);
       if (!res.success) {
-        setErrorMessage(res.error || 'Account not found.');
+        setErrorMessage(res.error || 'No user account found matching that email.');
       } else {
         setGeneratedToken(res.resetToken || 'SEC-849201');
-        setInputToken(res.resetToken || 'SEC-849201'); // Pre-fill for easy demonstration
+        setInputToken(res.resetToken || 'SEC-849201');
+        setDispatchedTempPassword(res.tempPassword || '');
+        setDispatchedToEmail(res.sentToEmail || '');
         setForgotStep(2);
-        setSuccessMessage(`Recovery token generated and sent to ${forgotEmail}.`);
+        setSuccessMessage(`Temporary password successfully generated and dispatched to ${res.sentToEmail}!`);
       }
-    }, 250);
+    }, 300);
+  };
+
+  const handleCopyTempPassword = () => {
+    if (!dispatchedTempPassword) return;
+    navigator.clipboard.writeText(dispatchedTempPassword).then(() => {
+      setCopiedTemp(true);
+      setTimeout(() => setCopiedTemp(false), 2500);
+    });
+  };
+
+  const handleLoginWithTemp = () => {
+    resetMessages();
+    setIsLoading(true);
+    setTimeout(() => {
+      const res = loginUser(forgotEmail, dispatchedTempPassword);
+      setIsLoading(false);
+      if (res.success) {
+        setIsAuthModalOpen(false);
+      } else {
+        setLoginEmail(forgotEmail);
+        setLoginPassword(dispatchedTempPassword);
+        handleSwitchMode('login');
+      }
+    }, 200);
+  };
+
+  const handleRecoveryEmailResetSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryResetError(null);
+    setRecoveryResetSuccess(null);
+
+    const oldClean = recoveryResetOldEmail.trim().toLowerCase();
+    const newClean = recoveryResetNewEmail.trim().toLowerCase();
+    const persClean = recoveryResetPersonalEmail.trim().toLowerCase();
+
+    if (!oldClean || !oldClean.includes('@') || !newClean || !newClean.includes('@') || !newClean.includes('.')) {
+      setRecoveryResetError('Please enter valid work email addresses.');
+      return;
+    }
+
+    if (persClean && (!persClean.includes('@') || !persClean.includes('.'))) {
+      setRecoveryResetError('Please enter a valid personal email address format.');
+      return;
+    }
+
+    const targetUser = users.find(
+      (u) => u.email.toLowerCase() === oldClean || (u.personalEmail && u.personalEmail.toLowerCase() === oldClean)
+    );
+
+    if (!targetUser) {
+      setRecoveryResetError('No existing user account found with that current email.');
+      return;
+    }
+
+    setIsResettingEmail(true);
+    setTimeout(() => {
+      const res = resetUserEmail(targetUser.id, newClean, persClean || undefined);
+      setIsResettingEmail(false);
+      if (!res.success) {
+        setRecoveryResetError(res.error || 'Failed to reset email address.');
+      } else {
+        setRecoveryResetSuccess(`Email address successfully reset to ${newClean}! You can now request a temporary password or log in.`);
+        setForgotEmail(newClean);
+        if (persClean) setPersonalRecoveryEmail(persClean);
+        setTimeout(() => {
+          setShowEmailResetInRecovery(false);
+        }, 2500);
+      }
+    }, 300);
   };
 
   const handleVerifyToken = (e: React.FormEvent) => {
@@ -419,7 +500,13 @@ export const AuthModal: React.FC = () => {
                     <span className="text-xs text-slate-400">Remember session</span>
                   </label>
 
-                  <span className="text-[11px] text-slate-500">Default demo pass: <code className="text-indigo-300">Password123!</code></span>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchMode('forgot_password')}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
                 </div>
 
                 <button
@@ -431,90 +518,6 @@ export const AuthModal: React.FC = () => {
                   <span>{isLoading ? 'Authenticating...' : 'Sign In to Workspace'}</span>
                 </button>
               </form>
-
-              {/* Quick Demo Switcher */}
-              <div className="pt-4 border-t border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    Quick Demo One-Click Login
-                  </span>
-                  <span className="text-[10px] text-slate-500">Instant Role Simulation</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickDemoLogin('eleanor.vance@uicms.com')}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-indigo-500/40 text-left transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-white truncate">Super Admin</div>
-                      <div className="text-[9px] text-slate-400 truncate">Eleanor Vance</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickDemoLogin('marcus.sterling@uicms.com')}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-indigo-500/40 text-left transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-white truncate">Dept Manager</div>
-                      <div className="text-[9px] text-slate-400 truncate">Marcus Sterling</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickDemoLogin('liam.gallagher@uicms.com')}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-indigo-500/40 text-left transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-white truncate">Art Director</div>
-                      <div className="text-[9px] text-slate-400 truncate">Liam Gallagher</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickDemoLogin('hannah.wright@uicms.com')}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-indigo-500/40 text-left transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-white truncate">QA Lead</div>
-                      <div className="text-[9px] text-slate-400 truncate">Hannah Wright</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickDemoLogin('chloe.bennett@uicms.com')}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-indigo-500/40 text-left transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-white truncate">Account Director</div>
-                      <div className="text-[9px] text-slate-400 truncate">Chloe Bennett</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickDemoLogin('bradley.cooper@discovery.co.za')}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-indigo-500/40 text-left transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-rose-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-white truncate">Client Approver</div>
-                      <div className="text-[9px] text-slate-400 truncate">Bradley Cooper</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -611,9 +614,10 @@ export const AuthModal: React.FC = () => {
                 currentAvatar={selectedAvatar}
                 onAvatarChange={setSelectedAvatar}
                 userName={regName || 'New User'}
-                label="Profile Avatar (Upload Photo or Choose Preset)"
-                helperText="Upload your custom profile photo (PNG, JPG, WebP) or select from team presets."
+                label="Profile Photo"
+                helperText="Upload your custom profile photo (PNG, JPG, WebP) or enter an image URL."
                 size="md"
+                showPresets={false}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -682,7 +686,7 @@ export const AuthModal: React.FC = () => {
             </form>
           )}
 
-          {/* ======================= MODE 3: FORGOT PASSWORD ======================= */}
+          {/* ======================= MODE 3: ACCOUNT RECOVERY & TEMPORARY PASSWORD ======================= */}
           {authModalMode === 'forgot_password' && (
             <div className="space-y-4">
               {/* Step indicator */}
@@ -693,7 +697,7 @@ export const AuthModal: React.FC = () => {
                   }`}>
                     1
                   </span>
-                  <span>Request Code</span>
+                  <span>Personal Email Request</span>
                 </div>
                 <div className="h-[1px] w-8 bg-slate-800" />
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
@@ -702,7 +706,7 @@ export const AuthModal: React.FC = () => {
                   }`}>
                     2
                   </span>
-                  <span>Verify Token</span>
+                  <span>Temporary Password</span>
                 </div>
                 <div className="h-[1px] w-8 bg-slate-800" />
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
@@ -711,96 +715,253 @@ export const AuthModal: React.FC = () => {
                   }`}>
                     3
                   </span>
-                  <span>New Password</span>
+                  <span>Set New Password</span>
                 </div>
               </div>
 
-              {/* Step 1: Request code */}
+              {/* Step 1: Request temporary password to personal email */}
               {forgotStep === 1 && (
-                <form onSubmit={handleForgotRequest} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Enter Account Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                      <input
-                        type="email"
-                        required
-                        value={forgotEmail}
-                        onChange={(e) => setForgotEmail(e.target.value)}
-                        placeholder="your.email@uicms.com"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 text-white text-xs outline-none transition-all placeholder:text-slate-600"
-                      />
+                <div className="space-y-4">
+                  <form onSubmit={handleForgotRequest} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Account Work Email <span className="text-rose-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          type="email"
+                          required
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="e.g. eleanor.vance@uicms.com"
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 text-white text-xs outline-none transition-all placeholder:text-slate-600"
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Enter your registered workspace account email.
+                      </p>
                     </div>
-                  </div>
 
-                  <p className="text-[11px] text-slate-400">
-                    A secure 6-digit recovery PIN will be generated for your verified registered identity.
-                  </p>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>{isLoading ? 'Generating Token...' : 'Send Recovery Token'}</span>
-                  </button>
-                </form>
-              )}
-
-              {/* Step 2: Verify Token */}
-              {forgotStep === 2 && (
-                <form onSubmit={handleVerifyToken} className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 space-y-1">
-                    <span className="text-[11px] text-indigo-300 font-bold uppercase tracking-wider block">
-                      Simulated Security Dispatch
-                    </span>
-                    <p className="text-xs text-slate-300">
-                      Recovery code dispatched to <span className="font-semibold text-white">{forgotEmail}</span>:
-                    </p>
-                    <div className="mt-2 p-2 rounded bg-slate-950 border border-indigo-500/40 text-center font-mono text-sm font-bold text-indigo-400 tracking-widest">
-                      {generatedToken}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Personal Email for Delivery (Optional Override)
+                      </label>
+                      <div className="relative">
+                        <Send className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          type="email"
+                          value={personalRecoveryEmail}
+                          onChange={(e) => setPersonalRecoveryEmail(e.target.value)}
+                          placeholder="e.g. personal.name@gmail.com (defaults to registered personal email)"
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 text-white text-xs outline-none transition-all placeholder:text-slate-600"
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        If omitted, will be sent to the personal email registered on your profile.
+                      </p>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Enter Recovery Token
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={inputToken}
-                      onChange={(e) => setInputToken(e.target.value)}
-                      placeholder="SEC-XXXXXX"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 text-white text-xs font-mono outline-none transition-all"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setForgotStep(1)}
-                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors flex items-center gap-1.5"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5" />
-                      <span>Back</span>
-                    </button>
+                    <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-slate-300 text-xs flex items-start gap-2">
+                      <Shield className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+                      <span>
+                        A secure temporary password will be dispatched to your personal email inbox, allowing you to log into the workspace immediately.
+                      </span>
+                    </div>
 
                     <button
                       type="submit"
-                      className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-2"
+                      disabled={isLoading}
+                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
                     >
-                      <Shield className="w-3.5 h-3.5" />
-                      <span>Verify & Continue</span>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isLoading ? 'Generating & Sending...' : 'Send Temporary Password to Personal Email'}</span>
                     </button>
+                  </form>
+
+                  {/* Inline Email Reset Accordion */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailResetInRecovery(!showEmailResetInRecovery)}
+                      className="w-full text-left flex items-center justify-between text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 transition-colors"
+                    >
+                      <span>Need to reset or change your account email address?</span>
+                      <RefreshCw className={`w-3.5 h-3.5 transition-transform ${showEmailResetInRecovery ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showEmailResetInRecovery && (
+                      <form onSubmit={handleRecoveryEmailResetSubmit} className="mt-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                        <span className="text-[11px] font-bold text-white block">
+                          Reset Registered Account Email
+                        </span>
+
+                        {recoveryResetError && (
+                          <div className="p-2 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-[11px]">
+                            {recoveryResetError}
+                          </div>
+                        )}
+                        {recoveryResetSuccess && (
+                          <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px]">
+                            {recoveryResetSuccess}
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">
+                            Current Account Email
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={recoveryResetOldEmail}
+                            onChange={(e) => setRecoveryResetOldEmail(e.target.value)}
+                            placeholder="Current account email"
+                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">
+                            New Work Email Address
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={recoveryResetNewEmail}
+                            onChange={(e) => setRecoveryResetNewEmail(e.target.value)}
+                            placeholder="New work email"
+                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">
+                            Personal Email for Recovery (Optional)
+                          </label>
+                          <input
+                            type="email"
+                            value={recoveryResetPersonalEmail}
+                            onChange={(e) => setRecoveryResetPersonalEmail(e.target.value)}
+                            placeholder="Personal recovery email"
+                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isResettingEmail}
+                          className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>{isResettingEmail ? 'Resetting Email...' : 'Save New Email Address'}</span>
+                        </button>
+                      </form>
+                    )}
                   </div>
-                </form>
+                </div>
               )}
 
-              {/* Step 3: Set New Password */}
+              {/* Step 2: Temporary Password Dispatched Box */}
+              {forgotStep === 2 && (
+                <div className="space-y-4">
+                  {/* Personal Email Delivery Card */}
+                  <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-950/50 via-slate-900 to-emerald-950/30 border border-indigo-500/30 space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-white uppercase tracking-wider">
+                          Temporary Password Dispatched
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Personal Inbox
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-slate-300 space-y-1">
+                      <p>
+                        Dispatched to Personal Email:{' '}
+                        <span className="font-semibold text-emerald-300 underline underline-offset-2">
+                          {dispatchedToEmail}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Account Work Email: <span className="text-white font-mono">{forgotEmail}</span>
+                      </p>
+                    </div>
+
+                    {/* Temporary Password Highlight Box */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Temporary Login Password
+                        </span>
+                        <div className="font-mono text-base sm:text-lg font-bold text-indigo-400 tracking-wider">
+                          {dispatchedTempPassword}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCopyTempPassword}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+                      >
+                        {copiedTemp ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Password</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Your account credentials have been updated with this temporary password. You can sign in immediately or change to a permanent password below.
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleLoginWithTemp}
+                      disabled={isLoading}
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{isLoading ? 'Signing In...' : 'Sign In with Temporary Password'}</span>
+                    </button>
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setForgotStep(1)}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors flex items-center gap-1.5"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>Send Again</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setForgotStep(3)}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white text-xs font-semibold transition-colors flex items-center gap-1.5"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        <span>Set Custom Password</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Set Custom New Password */}
               {forgotStep === 3 && (
                 <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
                   <div>
@@ -844,14 +1005,25 @@ export const AuthModal: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{isLoading ? 'Updating Password...' : 'Save New Password & Sign In'}</span>
-                  </button>
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForgotStep(2)}
+                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors flex items-center gap-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{isLoading ? 'Updating Password...' : 'Save New Password & Sign In'}</span>
+                    </button>
+                  </div>
                 </form>
               )}
             </div>

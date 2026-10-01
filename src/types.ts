@@ -40,7 +40,11 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  personalEmail?: string;
   password?: string;
+  isTempPassword?: boolean;
+  tempPasswordExpiresAt?: string;
+  mustChangePassword?: boolean;
   role: UserRole;
   roleTitle: string;
   departmentId: DepartmentId;
