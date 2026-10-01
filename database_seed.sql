@@ -171,6 +171,25 @@ CREATE TABLE `tasks` (
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- App-managed project file metadata; file bytes remain at the referenced URL.
+CREATE TABLE `project_files` (
+  `id` VARCHAR(50) NOT NULL,
+  `project_id` VARCHAR(50) NOT NULL,
+  `filename` VARCHAR(255) NOT NULL,
+  `size` VARCHAR(50) NOT NULL DEFAULT '',
+  `type` VARCHAR(150) NOT NULL DEFAULT '',
+  `version` VARCHAR(20) NOT NULL DEFAULT 'V0.1',
+  `uploaded_by` VARCHAR(50) NOT NULL DEFAULT '',
+  `uploaded_by_name` VARCHAR(100) NOT NULL DEFAULT '',
+  `uploaded_at` VARCHAR(50) NOT NULL,
+  `category` VARCHAR(50) NOT NULL DEFAULT 'proofs',
+  `url` VARCHAR(1000) NOT NULL DEFAULT '',
+  `description` TEXT NULL,
+  `app_payload` LONGTEXT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_project` (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- -----------------------------------------------------------------------------
 -- 6. DELIVERABLE VERSIONS
 -- -----------------------------------------------------------------------------

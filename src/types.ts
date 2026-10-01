@@ -124,7 +124,7 @@ export interface Project {
     ownerName: string;
     dueDate: string;
   };
-  approvalStatus: 'pending' | 'approved' | 'approved_with_notes' | 'rejected' | 'none';
+  approvalStatus: 'pending' | 'approved' | 'approved_with_notes' | 'rejected' | 'changes_requested' | 'none';
   isBriefLocked: boolean;
   isVersionLocked: boolean;
   briefData: Record<string, any>;
@@ -142,6 +142,13 @@ export interface Task {
   startDate: string;
   dueDate: string;
   status: 'not_started' | 'in_progress' | 'waiting' | 'blocked' | 'complete' | 'cancelled';
+  roleRequired?: string;
+  assignedToName?: string;
+  stage?: WorkflowStage;
+  isBlocking?: boolean;
+  estimatedHours?: number;
+  actualHours?: number;
+  checklist?: Array<{ id: string; text: string; completed: boolean }>;
   completedAt?: string;
   commentsCount?: number;
 }

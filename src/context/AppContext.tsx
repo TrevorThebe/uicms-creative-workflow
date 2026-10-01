@@ -14,6 +14,7 @@ import {
   Notification,
   Project,
   ProjectFile,
+  PriorityLevel,
   ProjectStatus,
   QASubmission,
   Task,
@@ -22,22 +23,466 @@ import {
   UserRole,
   WorkflowStage,
 } from '../types';
-import {
-  INITIAL_ACTIVITY_LOGS,
-  INITIAL_ADMIN_CONFIG,
-  INITIAL_APPROVALS,
-  INITIAL_CHAT_MESSAGES,
-  INITIAL_CLIENTS,
-  INITIAL_FILES,
-  INITIAL_FEEDBACK,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_PROJECTS,
-  INITIAL_QA_SUBMISSIONS,
-  INITIAL_TASKS,
-  INITIAL_USERS,
-  INITIAL_VERSIONS,
-} from '../data/initialData';
 import { calculateBriefCompleteness } from '../data/briefSchemas';
+
+const EMPTY_USER: User = {
+  id: '',
+  name: 'System User',
+  email: '',
+  password: '',
+  role: 'super_admin',
+  roleTitle: 'System User',
+  departmentId: 'marketing',
+  avatar: '',
+  active: true,
+  workloadCount: 0,
+};
+
+const EMPTY_ADMIN_CONFIG: AdminConfig = {
+  appName: 'UICMS Creative Workflow',
+  appSubtitle: 'Brief. Create. Review. Approve. Deliver.',
+  emailNotifications: {
+    newRequests: true,
+    assignment: true,
+    taskDue: true,
+    taskOverdue: true,
+    feedback: true,
+    approval: true,
+    qa: true,
+    completion: true,
+  },
+  escalationRules: {
+    notify3DaysBefore: true,
+    notify1DayBefore: true,
+    notifyDueToday: true,
+    notifyOverdue: true,
+    escalate2DaysOverdue: true,
+  },
+  activeDepartments: {
+    marketing: true,
+    incentive_travel: true,
+    online_ram: true,
+    development: true,
+  },
+  workflowRules: {
+    enforceBriefLockForProduction: true,
+    enforceQABeforeClientReview: true,
+    enforceApprovalBeforeRelease: true,
+    allowManagerOverride: true,
+    logAllActions: true,
+  },
+};
+
+const DB_DATA_ENDPOINTS = [
+  '/php-backend/api/data.php',
+];
+const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
+
+const asBoolean = (value: unknown): boolean => value === true || value === 1 || value === '1';
+
+const parseJsonArray = (value: unknown): any[] => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const parseJsonObject = (value: unknown, fallback: Record<string, any> = {}): Record<string, any> => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      // Ignore invalid JSON and use supplied fallback.
+    }
+  }
+
+  return fallback;
+};
+
+const normalizeUsers = (data: any[] = []): User[] =>
+  data.map((user) => ({
+    id: user.id || '',
+    name: user.name || 'Unknown User',
+    email: user.email || '',
+    password: user.password || '',
+    role: (user.role || 'designer') as UserRole,
+    roleTitle: user.role_title || user.roleTitle || user.role || 'Team Member',
+    departmentId: (user.department_id || user.departmentId || 'marketing') as DepartmentId,
+    avatar: user.avatar || '',
+    active: asBoolean(user.active),
+    isSuspended: asBoolean(user.is_suspended ?? user.isSuspended),
+    suspendedReason: user.suspension_reason || user.suspendedReason || '',
+    workloadCount: Number(user.workload_count ?? user.workloadCount ?? 0),
+    createdAt: user.created_at || user.createdAt || new Date().toISOString(),
+  }));
+
+const normalizeClients = (data: any[] = []): ClientRecord[] =>
+  data.map((client) => ({
+    id: client.id || '',
+    name: client.name || 'Client',
+    code: client.code || client.id || 'CLIENT',
+    logoUrl: client.logo_url || client.logoUrl || '',
+    brandGuidelines: client.brand_guidelines || client.brandGuidelines || '',
+    ciDocumentUrl: client.ci_document_url || client.ciDocumentUrl,
+    primaryContact: {
+      name: client.primary_contact_name || client.primaryContact?.name || 'Primary Contact',
+      email: client.primary_contact_email || client.primaryContact?.email || '',
+      phone: client.primary_contact_phone || client.primaryContact?.phone || '',
+      position: client.primary_contact_position || client.primaryContact?.position || '',
+    },
+    primaryEmail: client.primary_contact_email || client.primaryEmail,
+    brandColors: parseJsonArray(client.default_ci_colors || client.brandColors || client.defaultCiColors),
+    fontFamily: client.font_requirements || client.fontRequirements || '',
+    guidelinesNotes: client.notes || client.guidelinesNotes || '',
+    website: client.website || '',
+    notes: client.notes || '',
+    defaultCiColors: parseJsonArray(client.default_ci_colors || client.defaultCiColors),
+    fontRequirements: client.font_requirements || client.fontRequirements || '',
+    activeProjectsCount: Number(client.active_projects_count ?? client.activeProjectsCount ?? 0),
+  }));
+
+const normalizeProjects = (data: any[] = []): Project[] =>
+  data.map((project) => ({
+    id: project.id || '',
+    projectNumber: Number(project.project_number ?? project.projectNumber ?? 0),
+    clientId: project.client_id || project.clientId || '',
+    departmentId: (project.department_id || project.departmentId || 'marketing') as DepartmentId,
+    requestTypeId: project.request_type_id || project.requestTypeId || '',
+    projectName: project.project_name || project.projectName || 'Untitled Project',
+    campaignName: project.campaign_name || project.campaignName || '',
+    description: project.description || '',
+    priority: (project.priority || 'medium') as PriorityLevel,
+    stage: (project.stage === 'FINAL_RELEASE' ? 'RELEASE_PUBLISH' : project.stage === 'COMPLETED' ? 'ARCHIVE' : project.stage || 'REQUESTED') as WorkflowStage,
+    status: (project.status || 'on_track') as ProjectStatus,
+    version: project.version || 'V0.1',
+    accountableUserId: project.accountable_user_id || project.accountableUserId || '',
+    projectOwnerId: project.project_owner_id || project.projectOwnerId || '',
+    qaOwnerId: project.qa_owner_id || project.qaOwnerId || '',
+    approverId: project.approver_id || project.approverId || '',
+    contributorIds: parseJsonArray(project.contributor_ids || project.contributorIds),
+    createdAt: project.created_at || project.createdAt || new Date().toISOString(),
+    updatedAt: project.updated_at || project.updatedAt || new Date().toISOString(),
+    briefDueDate: project.brief_due_date || project.briefDueDate || new Date().toISOString().split('T')[0],
+    briefLockedAt: project.brief_locked_at || project.briefLockedAt,
+    briefLockedBy: project.brief_locked_by || project.briefLockedBy,
+    productionDueDate: project.production_due_date || project.productionDueDate || new Date().toISOString().split('T')[0],
+    internalQaDueDate: project.internal_qa_due_date || project.internalQaDueDate || new Date().toISOString().split('T')[0],
+    clientReviewDueDate: project.client_review_due_date || project.clientReviewDueDate || new Date().toISOString().split('T')[0],
+    clientApprovalDueDate: project.client_approval_due_date || project.clientApprovalDueDate || new Date().toISOString().split('T')[0],
+    finalQaDueDate: project.final_qa_due_date || project.finalQaDueDate || new Date().toISOString().split('T')[0],
+    releaseDate: project.release_date || project.releaseDate || new Date().toISOString().split('T')[0],
+    dependencies: project.dependencies || '',
+    risks: project.risks || '',
+    blockers: project.blockers || '',
+    externalSuppliers: project.external_suppliers || project.externalSuppliers || '',
+    nextAction: {
+      task: project.next_action_task || project.nextAction?.task || 'Review project progress',
+      ownerName: project.next_action_owner || project.nextAction?.ownerName || 'Project Owner',
+      dueDate: project.next_action_due || project.nextAction?.dueDate || new Date().toISOString().split('T')[0],
+    },
+    approvalStatus: (project.approval_status === 'changes_requested' ? 'changes_requested' : project.approval_status || project.approvalStatus || 'none') as Project['approvalStatus'],
+    isBriefLocked: asBoolean(project.is_brief_locked ?? project.isBriefLocked),
+    isVersionLocked: asBoolean(project.is_version_locked ?? project.isVersionLocked),
+    briefData: parseJsonObject(project.brief_data ?? project.briefData, {}),
+    briefCompleteness: Number(project.brief_completeness ?? project.briefCompleteness ?? 0),
+  }));
+
+const normalizeTasks = (data: any[] = []): Task[] =>
+  data.map((task) => ({
+    id: task.id || '',
+    projectId: task.project_id || task.projectId || '',
+    name: task.title || task.name || 'Untitled Task',
+    description: task.description || '',
+    ownerId: task.assigned_to_user_id || task.ownerId || '',
+    departmentId: (task.department_id || task.departmentId || 'marketing') as DepartmentId,
+    priority: (task.priority || 'medium') as PriorityLevel,
+    startDate: task.start_date || task.startDate || task.created_at || new Date().toISOString().split('T')[0],
+    dueDate: task.due_date || task.dueDate || new Date().toISOString().split('T')[0],
+    status: (task.status === 'todo' ? 'not_started' : task.status === 'completed' ? 'complete' : task.status || 'not_started') as Task['status'],
+    roleRequired: task.role_required || task.roleRequired || 'designer',
+    assignedToName: task.assigned_to_name || task.assignedToName || '',
+    stage: task.stage as WorkflowStage | undefined,
+    isBlocking: asBoolean(task.is_blocking ?? task.isBlocking),
+    estimatedHours: Number(task.estimated_hours ?? task.estimatedHours ?? 0),
+    actualHours: Number(task.actual_hours ?? task.actualHours ?? 0),
+    checklist: parseJsonArray(task.checklist),
+    completedAt: task.completed_at || task.completedAt,
+    commentsCount: Number(task.comments_count ?? task.commentsCount ?? 0),
+  }));
+
+const normalizeVersions = (data: any[] = []): DeliverableVersion[] =>
+  data.map((version) => ({
+    id: version.id || '',
+    projectId: version.project_id || version.projectId || '',
+    versionNumber: version.version_number || version.versionNumber || 'V0.1',
+    title: version.title || 'Untitled Version',
+    fileUrl: version.file_url || version.fileUrl,
+    previewUrl: version.preview_url || version.previewUrl,
+    uploadedBy: version.uploaded_by || version.uploadedBy || '',
+    uploadedByName: version.uploaded_by_name || version.uploadedByName || '',
+    uploadedAt: version.uploaded_at || version.uploadedAt || new Date().toISOString(),
+    description: version.description || '',
+    notes: version.qa_notes || version.notes,
+    status: (version.status || 'draft') as DeliverableVersion['status'],
+    isLocked: asBoolean(version.is_locked ?? version.isLocked),
+    qaResult: (version.qa_result || version.qaResult) as DeliverableVersion['qaResult'],
+    qaNotes: version.qa_notes || version.qaNotes,
+    approvedAt: version.approved_at || version.approvedAt,
+    approverName: version.approver_name || version.approverName,
+    changelog: version.changelog,
+  }));
+
+const normalizeQaSubmissions = (data: any[] = []): QASubmission[] =>
+  data.map((entry) => ({
+    id: entry.id || '',
+    projectId: entry.project_id || entry.projectId || '',
+    versionId: entry.version_id || entry.versionId || '',
+    versionNumber: entry.version_number || entry.versionNumber,
+    result: (entry.result || 'PASS') as QASubmission['result'],
+    performedBy: entry.performed_by || entry.performedBy || '',
+    performedByName: entry.performed_by_name || entry.performedByName || 'QA Lead',
+    performedAt: entry.performed_at || entry.performedAt || new Date().toISOString(),
+    checklist: parseJsonArray(entry.checklist || entry.items || entry.checklistItems),
+    items: parseJsonArray(entry.checklist || entry.items || entry.checklistItems),
+    overallNotes: entry.overall_notes || entry.overallNotes || '',
+    passedCount: Number(entry.passed_count ?? entry.passedCount ?? 0),
+    failedCount: Number(entry.failed_count ?? entry.failedCount ?? 0),
+    naCount: Number(entry.na_count ?? entry.naCount ?? 0),
+  }));
+
+const normalizeApprovals = (data: any[] = []): ClientApprovalRecord[] =>
+  data.map((approval) => ({
+    id: approval.id || '',
+    projectId: approval.project_id || approval.projectId || '',
+    versionId: approval.version_id || approval.versionId || '',
+    versionNumber: approval.version_number || approval.versionNumber,
+    clientId: approval.client_id || approval.clientId,
+    decision: (approval.decision || 'APPROVED') as ClientApprovalRecord['decision'],
+    clientName: approval.client_name || approval.clientName || 'Client',
+    clientPosition: approval.client_position || approval.clientPosition || '',
+    confirmationText: approval.confirmation_text || approval.confirmationText || '',
+    comments: approval.comments || '',
+    changesRequested: parseJsonArray(approval.changes_requested || approval.changesRequested),
+    approvedAt: approval.approved_at || approval.approvedAt || new Date().toISOString(),
+    signatureHash: approval.signature_hash || approval.signatureHash,
+  }));
+
+const normalizeFeedbackItems = (data: any[] = []): FeedbackItem[] =>
+  data.map((item) => ({
+    id: item.id || '',
+    projectId: item.project_id || item.projectId || '',
+    version: item.version || 'V0.1',
+    submittedBy: item.submitted_by || item.submittedBy || '',
+    submittedByName: item.submitted_by_name || item.submittedByName || 'User',
+    submittedAt: item.submitted_at || item.submittedAt || new Date().toISOString(),
+    feedbackText: item.feedback_text || item.feedbackText || '',
+    attachmentUrl: item.attachment_url || item.attachmentUrl,
+    assignedTo: item.assigned_to || item.assignedTo || '',
+    assignedToName: item.assigned_to_name || item.assignedToName || 'Assignee',
+    priority: (item.priority || 'medium') as PriorityLevel,
+    status: (item.status || 'open') as FeedbackItem['status'],
+    type: (item.type || 'action_required') as FeedbackItem['type'],
+  }));
+
+const normalizeNotifications = (data: any[] = []): Notification[] =>
+  data.map((notification) => ({
+    id: notification.id || '',
+    userId: notification.user_id || notification.userId || '',
+    projectId: notification.project_id || notification.projectId,
+    type: (notification.type || 'system_alert') as Notification['type'],
+    title: notification.title || 'Notification',
+    message: notification.message || '',
+    read: asBoolean(notification.is_read ?? notification.read),
+    createdAt: notification.created_at || notification.createdAt || new Date().toISOString(),
+    targetTab: notification.target_tab || notification.targetTab,
+  }));
+
+const normalizeChatMessages = (data: any[] = []): ChatMessage[] =>
+  data.map((message) => ({
+    id: message.id || '',
+    projectId: message.project_id || message.projectId,
+    recipientId: message.recipient_id || message.recipientId,
+    channelId: message.channel_id || message.channelId,
+    senderId: message.sender_id || message.senderId || '',
+    senderName: message.sender_name || message.senderName || 'User',
+    senderAvatar: message.sender_avatar || message.senderAvatar || '',
+    message: message.message || '',
+    createdAt: message.created_at || message.createdAt || new Date().toISOString(),
+    attachments: parseJsonArray(message.attachments),
+    mentions: parseJsonArray(message.mentions),
+    referencedTaskId: message.referenced_task_id || message.referencedTaskId,
+    referencedVersion: message.referenced_version || message.referencedVersion,
+    isImportant: asBoolean(message.is_important ?? message.isImportant),
+  }));
+
+const normalizeActivityLogs = (data: any[] = []): ActivityLog[] =>
+  data.map((log) => ({
+    id: log.id || '',
+    projectId: log.project_id || log.projectId || '',
+    userId: log.user_id || log.userId || '',
+    userName: log.user_name || log.userName || 'User',
+    action: log.action || 'UPDATE',
+    description: log.description || '',
+    versionRef: log.version_ref || log.versionRef,
+    timestamp: log.timestamp || new Date().toISOString(),
+    previousStage: (log.previous_stage || log.previousStage) as WorkflowStage | undefined,
+    newStage: (log.new_stage || log.newStage) as WorkflowStage | undefined,
+    metadata: parseJsonObject(log.metadata),
+  }));
+
+const normalizeAdminConfig = (data: any): AdminConfig => {
+  const adminSettings = data && typeof data === 'object' ? data : {};
+  const keyedSettings = Array.isArray(adminSettings)
+    ? Object.fromEntries(
+        adminSettings.map((setting: any) => [setting.setting_key || setting.key, setting.setting_value || setting.value || {}])
+      )
+    : adminSettings;
+  const systemConfig = keyedSettings.system_config || keyedSettings.systemConfig || keyedSettings;
+  const config = parseJsonObject(systemConfig, EMPTY_ADMIN_CONFIG);
+
+  return {
+    appName: config.appName || EMPTY_ADMIN_CONFIG.appName,
+    appSubtitle: config.appSubtitle || EMPTY_ADMIN_CONFIG.appSubtitle,
+    emailNotifications: {
+      ...EMPTY_ADMIN_CONFIG.emailNotifications,
+      ...(config.emailNotifications || {}),
+    },
+    escalationRules: {
+      ...EMPTY_ADMIN_CONFIG.escalationRules,
+      ...(config.escalationRules || {}),
+    },
+    activeDepartments: {
+      ...EMPTY_ADMIN_CONFIG.activeDepartments,
+      ...(config.activeDepartments || {}),
+    },
+    workflowRules: {
+      ...EMPTY_ADMIN_CONFIG.workflowRules,
+      ...(config.workflowRules || {}),
+    },
+  };
+};
+
+const mergeMissingRecords = (databaseRows: any[], localRows: any[]): any[] => {
+  const ids = new Set(databaseRows.map((row) => row?.id).filter(Boolean));
+  return localRows.reduce((merged, row) => {
+    if (!row?.id || ids.has(row.id)) return merged;
+    ids.add(row.id);
+    merged.push(row);
+    return merged;
+  }, [...databaseRows]);
+};
+
+const fetchDatabaseState = async () => {
+  for (const endpoint of DB_DATA_ENDPOINTS) {
+    try {
+      const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+      if (!response.ok) continue;
+
+      const payload = await response.json();
+      if (!payload || payload.status !== 'success') continue;
+
+      const dataset = payload.data || payload;
+      const nextState = {
+        users: normalizeUsers(dataset.users ?? []),
+        projects: normalizeProjects(dataset.projects ?? []),
+        tasks: normalizeTasks(dataset.tasks ?? []),
+        files: (() => {
+          const fileRows = dataset.files ?? [];
+          if (fileRows.length === 0 && Array.isArray(dataset.versions)) {
+            return dataset.versions.map((v: any) => ({
+              id: v.id,
+              projectId: v.project_id || v.projectId,
+              filename: v.title || 'Deliverable',
+              size: 'db',
+              type: 'application/octet-stream',
+              version: v.version_number || v.versionNumber || 'V0.1',
+              uploadedBy: v.uploaded_by || v.uploadedBy || '',
+              uploadedByName: v.uploaded_by_name || v.uploadedByName || '',
+              uploadedAt: v.uploaded_at || v.uploadedAt || new Date().toISOString(),
+              category: 'approved_files',
+              url: v.file_url || v.fileUrl || '',
+              description: v.description || '',
+            }));
+          }
+          return fileRows;
+        })(),
+        versions: normalizeVersions(dataset.versions ?? []),
+        qaSubmissions: normalizeQaSubmissions(dataset.qa_submissions ?? dataset.qaSubmissions ?? []),
+        approvals: normalizeApprovals(dataset.client_approvals ?? dataset.approvals ?? []),
+        feedbackItems: normalizeFeedbackItems(dataset.feedback_items ?? dataset.feedbackItems ?? []),
+        notifications: normalizeNotifications(dataset.notifications ?? []),
+        chatMessages: normalizeChatMessages(dataset.chat_messages ?? dataset.chatMessages ?? []),
+        activityLogs: normalizeActivityLogs(dataset.activity_logs ?? dataset.activityLogs ?? []),
+        clients: normalizeClients(dataset.clients ?? []),
+        adminConfig: normalizeAdminConfig(dataset.admin_settings ?? dataset.adminSettings ?? dataset.adminConfig ?? EMPTY_ADMIN_CONFIG),
+      };
+
+      try {
+        const localData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+        const localUsers = normalizeUsers(localData.users ?? []);
+        const emails = new Set(nextState.users.map((user) => user.email.trim().toLowerCase()).filter(Boolean));
+        nextState.users = [
+          ...nextState.users,
+          ...localUsers.filter((user) => {
+            const email = user.email.trim().toLowerCase();
+            if (!email || emails.has(email)) return false;
+            emails.add(email);
+            return true;
+          }),
+        ];
+        nextState.projects = mergeMissingRecords(nextState.projects, normalizeProjects(localData.projects ?? []));
+        nextState.tasks = mergeMissingRecords(nextState.tasks, normalizeTasks(localData.tasks ?? []));
+        nextState.files = mergeMissingRecords(nextState.files, localData.files ?? []);
+        nextState.versions = mergeMissingRecords(nextState.versions, normalizeVersions(localData.versions ?? []));
+        nextState.qaSubmissions = mergeMissingRecords(nextState.qaSubmissions, normalizeQaSubmissions(localData.qaSubmissions ?? []));
+        nextState.approvals = mergeMissingRecords(nextState.approvals, normalizeApprovals(localData.approvals ?? []));
+        nextState.feedbackItems = mergeMissingRecords(nextState.feedbackItems, normalizeFeedbackItems(localData.feedbackItems ?? []));
+        nextState.notifications = mergeMissingRecords(nextState.notifications, normalizeNotifications(localData.notifications ?? []));
+        nextState.chatMessages = mergeMissingRecords(nextState.chatMessages, normalizeChatMessages(localData.chatMessages ?? []));
+        nextState.activityLogs = mergeMissingRecords(nextState.activityLogs, normalizeActivityLogs(localData.activityLogs ?? []));
+        nextState.clients = mergeMissingRecords(nextState.clients, normalizeClients(localData.clients ?? []));
+      } catch {
+        // Keep the database state when browser storage is unavailable or invalid.
+      }
+
+      return nextState;
+    } catch {
+      // Ignore unreachable endpoints and try the next candidate.
+    }
+  }
+
+  return null;
+};
+
+const EMPTY_STATE = () => ({
+  users: [] as User[],
+  currentUser: EMPTY_USER,
+  projects: [] as Project[],
+  tasks: [] as Task[],
+  files: [] as ProjectFile[],
+  versions: [] as DeliverableVersion[],
+  qaSubmissions: [] as QASubmission[],
+  approvals: [] as ClientApprovalRecord[],
+  feedbackItems: [] as FeedbackItem[],
+  notifications: [] as Notification[],
+  chatMessages: [] as ChatMessage[],
+  activityLogs: [] as ActivityLog[],
+  clients: [] as ClientRecord[],
+  adminConfig: EMPTY_ADMIN_CONFIG,
+});
 
 interface AppContextType {
   currentUser: User;
@@ -165,62 +610,24 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load from local storage or initial
-  const loadState = () => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Failed to load storage', e);
-    }
-    return null;
-  };
+  const emptyState = EMPTY_STATE();
+  const [databaseReady, setDatabaseReady] = useState(false);
 
-  const initial = loadState();
-
-  const [users, setUsers] = useState<User[]>(initial?.users || INITIAL_USERS);
-  const [currentUser, setCurrentUser] = useState<User>(
-    initial?.currentUser || INITIAL_USERS[0]
-  );
-  const [projects, setProjects] = useState<Project[]>(
-    initial?.projects || INITIAL_PROJECTS
-  );
-  const [tasks, setTasks] = useState<Task[]>(initial?.tasks || INITIAL_TASKS);
-  const [files, setFiles] = useState<ProjectFile[]>(
-    initial?.files || INITIAL_FILES
-  );
-  const [versions, setVersions] = useState<DeliverableVersion[]>(
-    initial?.versions || INITIAL_VERSIONS
-  );
-  const [qaSubmissions, setQaSubmissions] = useState<QASubmission[]>(
-    initial?.qaSubmissions || INITIAL_QA_SUBMISSIONS
-  );
-  const [approvals, setApprovals] = useState<ClientApprovalRecord[]>(
-    initial?.approvals || INITIAL_APPROVALS
-  );
-  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>(
-    initial?.feedbackItems || INITIAL_FEEDBACK
-  );
-  const [notifications, setNotifications] = useState<Notification[]>(
-    initial?.notifications || INITIAL_NOTIFICATIONS
-  );
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(
-    initial?.chatMessages || INITIAL_CHAT_MESSAGES
-  );
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(
-    initial?.activityLogs || INITIAL_ACTIVITY_LOGS
-  );
-  const [clients, setClients] = useState<ClientRecord[]>(
-    initial?.clients || INITIAL_CLIENTS
-  );
-  const [adminConfig, setAdminConfig] = useState<AdminConfig>(
-    initial?.adminConfig || INITIAL_ADMIN_CONFIG
-  );
+  const [users, setUsers] = useState<User[]>(emptyState.users);
+  const [currentUser, setCurrentUser] = useState<User>(emptyState.currentUser);
+  const [projects, setProjects] = useState<Project[]>(emptyState.projects);
+  const [tasks, setTasks] = useState<Task[]>(emptyState.tasks);
+  const [files, setFiles] = useState<ProjectFile[]>(emptyState.files);
+  const [versions, setVersions] = useState<DeliverableVersion[]>(emptyState.versions);
+  const [qaSubmissions, setQaSubmissions] = useState<QASubmission[]>(emptyState.qaSubmissions);
+  const [approvals, setApprovals] = useState<ClientApprovalRecord[]>(emptyState.approvals);
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>(emptyState.feedbackItems);
+  const [notifications, setNotifications] = useState<Notification[]>(emptyState.notifications);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(emptyState.chatMessages);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(emptyState.activityLogs);
+  const [clients, setClients] = useState<ClientRecord[]>(emptyState.clients);
+  const [adminConfig, setAdminConfig] = useState<AdminConfig>(emptyState.adminConfig);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [activeProjectTab, setActiveProjectTab] = useState<string>('brief');
@@ -231,7 +638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth & Profile Modal states
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    initial?.isAuthenticated !== undefined ? initial.isAuthenticated : true
+    true
   );
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot_password'>('login');
@@ -246,6 +653,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     return 'dark';
   });
+
+  useEffect(() => {
+    const hydrateFromDatabase = async () => {
+      const nextState = await fetchDatabaseState();
+      if (!nextState) {
+        setDatabaseReady(true);
+        return;
+      }
+
+      setUsers(nextState.users);
+      setProjects(nextState.projects);
+      setTasks(nextState.tasks);
+      setFiles(nextState.files);
+      setVersions(nextState.versions);
+      setQaSubmissions(nextState.qaSubmissions);
+      setApprovals(nextState.approvals);
+      setFeedbackItems(nextState.feedbackItems);
+      setNotifications(nextState.notifications);
+      setChatMessages(nextState.chatMessages);
+      setActivityLogs(nextState.activityLogs);
+      setClients(nextState.clients);
+      setAdminConfig(nextState.adminConfig);
+
+      if (nextState.users.length > 0 && nextState.users[0]) {
+        setCurrentUser(nextState.users[0]);
+      }
+
+      setDatabaseReady(true);
+    };
+
+    hydrateFromDatabase();
+  }, []);
+
+  useEffect(() => {
+    if (!databaseReady) return;
+
+    const timeout = window.setTimeout(async () => {
+      const data = {
+        users,
+        clients,
+        projects,
+        tasks,
+        files,
+        versions,
+        qa_submissions: qaSubmissions,
+        client_approvals: approvals,
+        feedback_items: feedbackItems,
+        notifications,
+        chat_messages: chatMessages,
+        activity_logs: activityLogs,
+        admin_settings: adminConfig,
+      };
+
+      try {
+        const response = await fetch(DB_DATA_ENDPOINTS[0], {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ data }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') {
+          throw new Error(result.message || `Database save failed (${response.status}).`);
+        }
+      } catch (error) {
+        console.error('Could not save application data to the database.', error);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    databaseReady,
+    users,
+    clients,
+    projects,
+    tasks,
+    files,
+    versions,
+    qaSubmissions,
+    approvals,
+    feedbackItems,
+    notifications,
+    chatMessages,
+    activityLogs,
+    adminConfig,
+  ]);
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
@@ -1267,21 +1762,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetAllDataToDemo = () => {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
-    setUsers(INITIAL_USERS);
-    setCurrentUser(INITIAL_USERS[0]);
-    setIsAuthenticated(true);
-    setProjects(INITIAL_PROJECTS);
-    setTasks(INITIAL_TASKS);
-    setFiles(INITIAL_FILES);
-    setVersions(INITIAL_VERSIONS);
-    setQaSubmissions(INITIAL_QA_SUBMISSIONS);
-    setApprovals(INITIAL_APPROVALS);
-    setFeedbackItems(INITIAL_FEEDBACK);
-    setNotifications(INITIAL_NOTIFICATIONS);
-    setChatMessages(INITIAL_CHAT_MESSAGES);
-    setActivityLogs(INITIAL_ACTIVITY_LOGS);
-    setClients(INITIAL_CLIENTS);
-    setAdminConfig(INITIAL_ADMIN_CONFIG);
+    const empty = EMPTY_STATE();
+    setUsers(empty.users);
+    setCurrentUser(empty.currentUser);
+    setIsAuthenticated(false);
+    setProjects(empty.projects);
+    setTasks(empty.tasks);
+    setFiles(empty.files);
+    setVersions(empty.versions);
+    setQaSubmissions(empty.qaSubmissions);
+    setApprovals(empty.approvals);
+    setFeedbackItems(empty.feedbackItems);
+    setNotifications(empty.notifications);
+    setChatMessages(empty.chatMessages);
+    setActivityLogs(empty.activityLogs);
+    setClients(empty.clients);
+    setAdminConfig(empty.adminConfig);
   };
 
   const exportDatabaseJson = (): string => {
@@ -1402,13 +1898,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const rawData = await response.json();
+      const responseData = rawData?.data ?? rawData;
       
       // Auto-detect format: Array of projects, or { projects: [...], files: [...] }
       let incomingProjects: Project[] = [];
       let incomingFiles: ProjectFile[] = [];
 
-      if (Array.isArray(rawData)) {
-        incomingProjects = rawData.map((item, idx) => ({
+      if (Array.isArray(responseData)) {
+        incomingProjects = responseData.map((item, idx) => ({
           id: item.id || `PRJ-${Date.now()}-${idx}`,
           projectNumber: item.projectNumber || item.project_number || 100 + idx,
           clientId: item.clientId || item.client_id || 'cl-discovery',
@@ -1450,12 +1947,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isVersionLocked: item.isVersionLocked ?? false,
           briefCompleteness: item.briefCompleteness || 100,
         }));
-      } else if (rawData && typeof rawData === 'object') {
-        if (Array.isArray(rawData.projects)) {
-          incomingProjects = rawData.projects;
+      } else if (responseData && typeof responseData === 'object') {
+        if (Array.isArray(responseData.projects)) {
+          incomingProjects = responseData.projects;
         }
-        if (Array.isArray(rawData.files)) {
-          incomingFiles = rawData.files;
+        if (Array.isArray(responseData.files)) {
+          incomingFiles = responseData.files;
         }
       }
 
@@ -1502,10 +1999,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const payload = {
         exportedAt: new Date().toISOString(),
-        projects,
-        files,
-        tasks,
-        clients,
+        data: {
+          users,
+          clients,
+          projects,
+          tasks,
+          files,
+          versions,
+          qa_submissions: qaSubmissions,
+          client_approvals: approvals,
+          feedback_items: feedbackItems,
+          notifications,
+          chat_messages: chatMessages,
+          activity_logs: activityLogs,
+          admin_settings: adminConfig,
+        },
       };
 
       const response = await fetch(apiUrl, {

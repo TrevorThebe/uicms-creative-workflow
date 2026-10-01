@@ -65,7 +65,7 @@ export const DatabaseSyncManager: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Local API Sync State
-  const [apiUrl, setApiUrl] = useState('http://localhost/uicms-api/get_projects.php');
+  const [apiUrl, setApiUrl] = useState('/php-backend/api/data.php');
   const [isSyncing, setIsSyncing] = useState(false);
   const [apiSyncFeedback, setApiSyncFeedback] = useState<{
     success?: boolean;

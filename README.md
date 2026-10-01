@@ -162,11 +162,13 @@ Click any project card or table row to open the 8-tab workspace:
 * **User Management & Provisioning:** Superusers can create user accounts, assign roles across all departments, modify titles, reset passwords, and enforce security suspensions with mandatory audit reasons.
 * **Immutable Audit Trail:** Superusers can inspect and search through the 100% immutable event stream auditing every brief lock, stage transition, client approval, QA certificate, and administrative change with UTC timestamps, actor names, and IP references.
 * **System Policies & Governance:** Superusers can enforce brief lock thresholds, configure department SLA turnaround targets, or re-seed the system demo state.
-* **Database Snapshots & Local Sync:** Superusers can export complete JSON snapshots of all 12 collections or connect to the PHP REST API bridge for MySQL synchronization.
+* **Database Snapshots & Local Sync:** Superusers can export complete JSON snapshots of all application collections or connect to the PHP REST API bridge for MySQL synchronization.
 
 ### 4.15 Local Database API Sync & AWS Hosting (🔒 Superuser Only)
-* **JSON Backup / Restore:** One-click full export and import of all 12 database collections.
-* **Local PHP/MySQL Bridge:** Sync React state with your local XAMPP or Docker MySQL backend.
+* **JSON Backup / Restore:** One-click full export and import of all application collections.
+* **Local PHP/MySQL Bridge:** The app reads and saves application records in the relational tables in `uicms_workflow`. XAMPP defaults to MySQL `root` with no password; set `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, and `DB_PORT` in the PHP environment when your local credentials differ.
+* **Local API startup:** From the workspace root, run `php -S 127.0.0.1:8088 -t .`; Vite proxies `/php-backend` to this server. Set `PHP_API_TARGET` to change the proxy target.
+* **Stored files:** `project_files` stores file metadata and URLs; the file contents remain at those URLs.
 * **AWS Deployment Specs:** Full architectural blueprints and sizing for ECS Fargate, RDS MySQL, S3, and EC2 (recommended `t3.small` / Ubuntu 24.04 LTS).
 
 ---
@@ -211,7 +213,7 @@ As a **Superuser (`super_admin`)**, follow these procedures for platform governa
 1. Under **Database & Sync Manager**:
    - Click **"Export JSON Database Snapshot"** to download an encrypted backup of all 12 relational collections.
    - Click **"Import JSON Backup"** to restore system data to a previous point in time.
-   - Click **"Test PHP/MySQL API Bridge"** to verify local or cloud database connectivity to AWS RDS / Docker MySQL.
+   - Click **"Test PHP/MySQL API Bridge"** to read the configured data endpoint; use **Push to API** to write current application state to MySQL.
 
 #### 4. Resetting Demo State
 - Click **"Reset Demo System State"** in the top right of the Admin Settings header to re-seed pristine demo projects, tasks, proofs, and QA records across all 4 departments.
@@ -229,12 +231,13 @@ As a **Superuser (`super_admin`)**, follow these procedures for platform governa
 
 ## 7. Database Schema & Architecture Reference
 
-The relational database (`database_seed.sql`) consists of 12 tables with foreign key integrity:
+The relational database (`database_seed.sql`) contains 14 operational tables:
 * `departments`: Department registry and routing.
 * `users`: Team credentials, roles, and avatar URLs.
 * `clients`: Enterprise client CI rules and color codes.
 * `projects`: Master project records, stage gates, and brief JSON payloads.
 * `tasks`: Stage tasks with checklist progress and hours logged.
+* `project_files`: Project file metadata and storage URLs.
 * `deliverable_versions`: Artwork proofs with changelogs and QA results.
 * `qa_submissions`: 14-point pre-flight QA records.
 * `client_approvals`: Client digital sign-offs with SHA-256 signature hashes.
