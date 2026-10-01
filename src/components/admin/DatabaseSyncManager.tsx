@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ProjectFile } from '../../types';
+import { UploadLocalDeliverableModal } from '../common/UploadLocalDeliverableModal';
+import { triggerLocalDownload } from '../../utils/localFileStore';
 import {
   AlertCircle,
   AlertTriangle,
@@ -759,18 +761,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       {new Date(file.uploadedAt).toLocaleDateString()}
                     </td>
                     <td className="py-2.5 px-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Delete file "${file.filename}"?`)) {
-                            deleteFile(file.id);
-                          }
-                        }}
-                        className="p-1 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
-                        title="Delete file"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => triggerLocalDownload(file.filename, file.url, file.type)}
+                          className="p-1 rounded hover:bg-indigo-950/60 text-slate-400 hover:text-indigo-400 transition-colors"
+                          title="Download file"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Delete file "${file.filename}"?`)) {
+                              deleteFile(file.id);
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors"
+                          title="Delete file"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -946,133 +958,10 @@ docker-compose up -d --build`}
       )}
 
       {/* Upload File Modal */}
-      {showFileUploadModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-indigo-400">
-                <Upload className="w-5 h-5" />
-                <h3 className="text-sm font-bold text-white">Add Local File to Vault</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowFileUploadModal(false)}
-                className="text-slate-400 hover:text-white text-xs"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateFile} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-200 mb-1">
-                  Filename <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={uploadFileName}
-                  onChange={(e) => setUploadFileName(e.target.value)}
-                  placeholder="e.g. Discovery_Vitality_Banner_Final_Print.pdf"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-200 mb-1">Associate Project</label>
-                  <select
-                    value={uploadFileProjectId}
-                    onChange={(e) => setUploadFileProjectId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.id} - {p.projectName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-200 mb-1">Category</label>
-                  <select
-                    value={uploadFileCategory}
-                    onChange={(e) => setUploadFileCategory(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="proofs">Deliverable Proof</option>
-                    <option value="brief">Brief Attachment</option>
-                    <option value="ci_brand">CI Brand Guidelines</option>
-                    <option value="approved_files">Approved Master File</option>
-                    <option value="release">Release Package</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-200 mb-1">Version</label>
-                  <input
-                    type="text"
-                    value={uploadFileVersion}
-                    onChange={(e) => setUploadFileVersion(e.target.value)}
-                    placeholder="V1.0"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-200 mb-1">Size</label>
-                  <input
-                    type="text"
-                    value={uploadFileSize}
-                    onChange={(e) => setUploadFileSize(e.target.value)}
-                    placeholder="12.4 MB"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-200 mb-1">MIME Type</label>
-                  <input
-                    type="text"
-                    value={uploadFileType}
-                    onChange={(e) => setUploadFileType(e.target.value)}
-                    placeholder="application/pdf"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-200 mb-1">Description / Proof Notes</label>
-                <textarea
-                  rows={2}
-                  value={uploadFileDescription}
-                  onChange={(e) => setUploadFileDescription(e.target.value)}
-                  placeholder="e.g. High resolution 300 DPI printer proof with 3mm bleed..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowFileUploadModal(false)}
-                  className="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold"
-                >
-                  Add File to Vault
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <UploadLocalDeliverableModal
+        isOpen={showFileUploadModal}
+        onClose={() => setShowFileUploadModal(false)}
+      />
     </div>
   );
 };

@@ -17,6 +17,8 @@ import {
   FileCheck2,
   FilePlus,
   FileText,
+  FolderOpen,
+  HardDrive,
   Layers,
   Megaphone,
   MonitorCheck,
@@ -27,7 +29,9 @@ import {
   Upload,
   UserCheck,
   Users,
+  X,
 } from 'lucide-react';
+import { fileToDataUrl, formatBytes } from '../../utils/localFileStore';
 
 interface NewRequestWizardProps {
   onClose?: () => void;
@@ -136,6 +140,26 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
     }
   };
 
+  const wizardFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleLocalFileSelect = async (file: File) => {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setTempUploadedFiles((prev) => [
+        ...prev,
+        {
+          name: file.name,
+          size: formatBytes(file.size),
+          type: file.type || 'application/octet-stream',
+          category: newFileCategory,
+          fileUrl: dataUrl,
+        },
+      ]);
+    } catch (err) {
+      console.error('Failed to attach file:', err);
+    }
+  };
+
   const handleAddDemoFile = () => {
     if (!newFileName.trim()) return;
     setTempUploadedFiles((prev) => [
@@ -145,7 +169,7 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
         size: '2.4 MB',
         type: 'application/pdf',
         category: newFileCategory,
-        fileUrl: 'https://files.uicms.com/uploads/sample.pdf',
+        fileUrl: `https://files.uicms.com/uploads/${encodeURIComponent(newFileName.trim())}`,
       },
     ]);
     setNewFileName('');
@@ -564,6 +588,39 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
 
               {/* Upload Box */}
               <div className="p-4 rounded-xl bg-slate-950/60 border border-dashed border-slate-800 space-y-3">
+                <input
+                  ref={wizardFileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleLocalFileSelect(e.target.files[0]);
+                    }
+                  }}
+                />
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-lg bg-slate-900/60 border border-slate-800">
+                  <div className="flex items-center gap-2.5 text-xs text-slate-300">
+                    <FolderOpen className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+                    <span>Upload deliverable assets or proofs from your local device:</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => wizardFileInputRef.current?.click()}
+                    className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs transition-colors flex-shrink-0"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Browse Local Files</span>
+                  </button>
+                </div>
+
+                <div className="relative flex items-center justify-center">
+                  <div className="border-t border-slate-800 w-full" />
+                  <span className="bg-slate-950 px-2 text-[10px] text-slate-400 uppercase font-mono absolute">
+                    or specify manually
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-2">
                     <input
@@ -588,14 +645,16 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
                     </select>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAddDemoFile}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Attach Asset File</span>
-                </button>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleAddDemoFile}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Link / Asset Entry</span>
+                  </button>
+                </div>
               </div>
 
               {/* Uploaded List */}
@@ -611,14 +670,23 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
                       key={i}
                       className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
                     >
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-indigo-400" />
-                        <span className="font-semibold text-white">{f.name}</span>
-                        <span className="text-[10px] text-slate-400">({f.size})</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                        <span className="font-semibold text-white truncate">{f.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">({f.size})</span>
                       </div>
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-800 text-indigo-300">
-                        {f.category}
-                      </span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-800 text-indigo-300">
+                          {f.category}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTempUploadedFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="p-1 rounded hover:bg-rose-950/50 text-slate-400 hover:text-rose-400"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}

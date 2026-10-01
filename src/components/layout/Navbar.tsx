@@ -5,6 +5,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  Clock,
   KeyRound,
   Layers,
   LogOut,
@@ -44,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
     themeMode,
     toggleThemeMode,
     isAuthenticated,
+    sessionRemainingSeconds,
     setIsAuthModalOpen,
     setAuthModalMode,
     setIsProfileModalOpen,
@@ -281,9 +283,36 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
             Sign In / Register
           </button>
         ) : (
-          <div className="relative">
-            <button
-              type="button"
+          <div className="flex items-center gap-2.5">
+            {/* Live Session Inactivity Auto-Logout Timer */}
+            <div
+              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all ${
+                sessionRemainingSeconds <= 15
+                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                  : 'bg-slate-950/80 border-slate-800/90 text-slate-300'
+              }`}
+              title="Active session auto-monitored. 1 minute of inactivity triggers auto-logout. Any cursor movement, scroll, or keypress resets this timer."
+            >
+              <Clock
+                className={`w-3.5 h-3.5 ${
+                  sessionRemainingSeconds <= 15 ? 'text-rose-400 animate-pulse' : 'text-indigo-400'
+                }`}
+              />
+              <span className="font-medium text-slate-400">
+                Session:{' '}
+                <strong
+                  className={`font-mono font-bold ${
+                    sessionRemainingSeconds <= 15 ? 'text-rose-300 animate-pulse' : 'text-indigo-300'
+                  }`}
+                >
+                  {sessionRemainingSeconds}s
+                </strong>
+              </span>
+            </div>
+
+            <div className="relative">
+              <button
+                type="button"
               onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
               className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition-all text-left"
             >
@@ -429,6 +458,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
               </div>
             )}
           </div>
+        </div>
         )}
       </div>
     </header>

@@ -26,6 +26,11 @@ import {
 import { calculateBriefCompleteness } from '../data/briefSchemas';
 import { hashPasswordSync, verifyPassword, isPasswordHashed } from '../utils/security';
 import {
+  saveLocalFileBlob,
+  getAllStoredFileDataUrls,
+  deleteLocalFileBlob,
+} from '../utils/localFileStore';
+import {
   INITIAL_ACTIVITY_LOGS,
   INITIAL_ADMIN_CONFIG,
   INITIAL_APPROVALS,
@@ -93,6 +98,8 @@ const DB_DATA_ENDPOINTS = [
   '/php-backend/api/data.php',
 ];
 const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
+const SESSION_STORAGE_KEY = 'uicms_auth_session_v1';
+const INACTIVITY_TIMEOUT_MS = 60 * 1000; // 1 Minute Inactivity Auto-Logout Timeout
 
 const asBoolean = (value: unknown): boolean => value === true || value === 1 || value === '1';
 
@@ -612,8 +619,12 @@ interface AppContextType {
   addClient: (client: ClientRecord) => void;
   resetAllDataToDemo: () => void;
 
-  // Authentication & User Administration
+  // Authentication, Session & Inactivity Timeout
   isAuthenticated: boolean;
+  sessionRemainingSeconds: number;
+  inactivityNotice: string | null;
+  setInactivityNotice: (notice: string | null) => void;
+  resetInactivityTimer: () => void;
   encryptAllUserPasswords: () => { success: boolean; count: number };
   isAuthModalOpen: boolean;
   authModalMode: 'login' | 'register' | 'forgot_password';
@@ -672,13 +683,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isNewRequestOpen, setIsNewRequestOpen] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
-  // Auth & Profile Modal states
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    true
-  );
+  // Auth, Profile Modal & Session Inactivity States
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot_password'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  // Inactivity Auto-Logout Timer State
+  const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number>(60);
+  const [inactivityNotice, setInactivityNotice] = useState<string | null>(null);
+  const lastActivityRef = React.useRef<number>(Date.now());
+
+  const resetInactivityTimer = React.useCallback(() => {
+    lastActivityRef.current = Date.now();
+    setSessionRemainingSeconds(60);
+  }, []);
 
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
     try {
@@ -698,11 +717,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
+      // Restore files and versions with any local files preserved in IndexedDB
+      let resolvedFiles = nextState.files;
+      let resolvedVersions = nextState.versions;
+      try {
+        const storedUrls = await getAllStoredFileDataUrls();
+        if (storedUrls && storedUrls.size > 0) {
+          resolvedFiles = (nextState.files || []).map((f: ProjectFile) => {
+            if (storedUrls.has(f.id)) {
+              return { ...f, url: storedUrls.get(f.id)! };
+            }
+            return f;
+          });
+          resolvedVersions = (nextState.versions || []).map((v: DeliverableVersion) => {
+            if (storedUrls.has(v.id)) {
+              return { ...v, fileUrl: storedUrls.get(v.id)! };
+            }
+            return v;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to hydrate files from IndexedDB:', err);
+      }
+
       setUsers(nextState.users);
       setProjects(nextState.projects);
       setTasks(nextState.tasks);
-      setFiles(nextState.files);
-      setVersions(nextState.versions);
+      setFiles(resolvedFiles);
+      setVersions(resolvedVersions);
       setQaSubmissions(nextState.qaSubmissions);
       setApprovals(nextState.approvals);
       setFeedbackItems(nextState.feedbackItems);
@@ -712,8 +754,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setClients(nextState.clients);
       setAdminConfig(nextState.adminConfig);
 
-      if (nextState.users.length > 0 && nextState.users[0]) {
-        setCurrentUser(nextState.users[0]);
+      // Restore stored user session if valid
+      let sessionRestored = false;
+      try {
+        const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (rawSession) {
+          const parsed = JSON.parse(rawSession);
+          if (parsed && parsed.userId) {
+            const matched = nextState.users.find((u) => u.id === parsed.userId);
+            if (matched && matched.active && !matched.isSuspended) {
+              setCurrentUser(matched);
+              setIsAuthenticated(true);
+              sessionRestored = true;
+            }
+          }
+        }
+      } catch {}
+
+      if (!sessionRestored) {
+        if (nextState.users.length > 0 && nextState.users[0]) {
+          setCurrentUser(nextState.users[0]);
+          localStorage.setItem(
+            SESSION_STORAGE_KEY,
+            JSON.stringify({
+              userId: nextState.users[0].id,
+              email: nextState.users[0].email,
+              loggedInAt: new Date().toISOString(),
+            })
+          );
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+          setIsAuthModalOpen(true);
+          setAuthModalMode('login');
+        }
       }
 
       setDatabaseReady(true);
@@ -721,6 +795,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     hydrateFromDatabase();
   }, []);
+
+  // Window user activity listener to reset inactivity timer when working
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    lastActivityRef.current = Date.now();
+    setSessionRemainingSeconds(60);
+
+    let lastThrottle = Date.now();
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastThrottle > 300) {
+        lastThrottle = now;
+        lastActivityRef.current = now;
+        setSessionRemainingSeconds(60);
+      }
+    };
+
+    const activityEvents = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'click',
+      'wheel',
+      'pointermove',
+    ];
+
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUserActivity);
+      });
+    };
+  }, [isAuthenticated]);
+
+  // 1-minute inactivity timeout interval check
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - lastActivityRef.current;
+      const remaining = Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
+
+      setSessionRemainingSeconds(remaining);
+
+      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        setIsAuthenticated(false);
+        setIsAuthModalOpen(true);
+        setAuthModalMode('login');
+        setInactivityNotice(
+          'Your session timed out after 1 minute of inactivity. Please sign in to resume your workspace session.'
+        );
+
+        setActivityLogs((prev) => [
+          {
+            id: `log-${Date.now()}`,
+            projectId: 'SYSTEM',
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'SESSION_TIMEOUT',
+            description: `Session expired: ${currentUser.name} was automatically logged out due to 1 minute of inactivity.`,
+            timestamp: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, currentUser]);
 
   useEffect(() => {
     if (!databaseReady) return;
@@ -1353,6 +1504,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setFiles((prev) => [newFile, ...prev]);
 
+    if (newFile.url && newFile.url.startsWith('data:')) {
+      saveLocalFileBlob(
+        newFile.id,
+        newFile.filename,
+        newFile.type,
+        newFile.size,
+        newFile.url
+      ).catch(() => {});
+    }
+
     logActivity(
       newFile.projectId,
       'FILE_UPLOADED',
@@ -1365,6 +1526,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteFile = (fileId: string) => {
     const f = files.find((item) => item.id === fileId);
     setFiles((prev) => prev.filter((item) => item.id !== fileId));
+    deleteLocalFileBlob(fileId).catch(() => {});
     if (f) {
       logActivity(
         f.projectId,
@@ -1394,6 +1556,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setVersions((prev) => [newVersion, ...prev]);
+
+    if (newVersion.fileUrl && newVersion.fileUrl.startsWith('data:')) {
+      saveLocalFileBlob(
+        newVersion.id,
+        newVersion.title,
+        'application/pdf',
+        '2.4 MB',
+        newVersion.fileUrl
+      ).catch(() => {});
+    }
 
     // Update project version reference & advance stage to INTERNAL_QA
     const project = projects.find((p) => p.id === newVersion.projectId);
@@ -2143,6 +2315,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(newUser);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
+    setInactivityNotice(null);
+
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        userId: newUser.id,
+        email: newUser.email,
+        loggedInAt: new Date().toISOString(),
+      })
+    );
+    lastActivityRef.current = Date.now();
+    setSessionRemainingSeconds(60);
 
     // Audit log
     const logId = `log-${Date.now()}`;
@@ -2208,6 +2392,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(user);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
+    setInactivityNotice(null);
+
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        userId: user.id,
+        email: user.email,
+        loggedInAt: new Date().toISOString(),
+      })
+    );
+    lastActivityRef.current = Date.now();
+    setSessionRemainingSeconds(60);
 
     // Audit log
     const logId = `log-${Date.now()}`;
@@ -2296,6 +2492,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logoutUser = () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
     setIsAuthenticated(false);
     setIsAuthModalOpen(true);
     setAuthModalMode('login');
@@ -2551,11 +2748,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, count };
   };
 
+  const handleSetCurrentUser = (user: User) => {
+    setCurrentUser(user);
+    if (user && user.id) {
+      localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({
+          userId: user.id,
+          email: user.email,
+          loggedInAt: new Date().toISOString(),
+        })
+      );
+    }
+    lastActivityRef.current = Date.now();
+    setSessionRemainingSeconds(60);
+  };
+
   return (
     <AppContext.Provider
       value={{
         currentUser,
         users,
+        sessionRemainingSeconds,
+        inactivityNotice,
+        setInactivityNotice,
+        resetInactivityTimer,
         encryptAllUserPasswords,
         projects,
         tasks,
@@ -2593,7 +2810,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteUser,
         updateUserPassword,
         updateUserProfile,
-        setCurrentUser,
+        setCurrentUser: handleSetCurrentUser,
         setSelectedProjectId,
         setActiveProjectTab,
         setIsSearchOpen,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   DepartmentId,
@@ -14,6 +14,16 @@ import { StageTimeline } from '../common/StageTimeline';
 import { calculateBriefCompleteness, getRequestTypeConfig } from '../../data/briefSchemas';
 import { generateQAChecklist } from '../../data/qaSchemas';
 import { PREDEFINED_TRAVEL_DOCUMENTS } from '../../data/travelCatalogue';
+import { UploadLocalDeliverableModal } from '../common/UploadLocalDeliverableModal';
+import { DeliverablePreviewModal, PreviewableFile } from '../common/DeliverablePreviewModal';
+import {
+  triggerLocalDownload,
+  fileToDataUrl,
+  formatBytes,
+  isImageFile,
+  isPdfFile,
+  saveLocalFileBlob,
+} from '../../utils/localFileStore';
 import {
   AlertCircle,
   AlertTriangle,
@@ -30,8 +40,11 @@ import {
   FileSpreadsheet,
   FileText,
   Flame,
+  FolderOpen,
+  HardDrive,
   HelpCircle,
   History,
+  Image as ImageIcon,
   Layers,
   Lock,
   MessageSquare,
@@ -114,12 +127,19 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
   const [overrideStage, setOverrideStage] = useState<WorkflowStage>('PRODUCTION');
   const [overrideReason, setOverrideReason] = useState('');
 
-  // Deliverable Upload Modal
+  // Deliverable Upload & Asset Modals
   const [showUploadVersionModal, setShowUploadVersionModal] = useState(false);
+  const [showUploadAssetModal, setShowUploadAssetModal] = useState(false);
+  const [previewModalFile, setPreviewModalFile] = useState<PreviewableFile | null>(null);
+
+  const versionFileInputRef = useRef<HTMLInputElement>(null);
+  const [versionSelectedFile, setVersionSelectedFile] = useState<File | null>(null);
+  const [isReadingVersionFile, setIsReadingVersionFile] = useState(false);
+  const [versionIsDragging, setVersionIsDragging] = useState(false);
   const [newVersionNum, setNewVersionNum] = useState('V1.0');
   const [newVersionTitle, setNewVersionTitle] = useState('Initial Creative Deliverable');
   const [newVersionNotes, setNewVersionNotes] = useState('');
-  const [newVersionUrl, setNewVersionUrl] = useState('https://files.uicms.com/proofs/sample-deliverable.pdf');
+  const [newVersionUrl, setNewVersionUrl] = useState('');
 
   // QA form state
   const [qaItems, setQaItems] = useState<QACheckItem[]>(() => {
@@ -225,19 +245,52 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
     }
   };
 
-  const handleUploadVersion = () => {
+  const handleVersionFileSelect = async (file: File) => {
+    setVersionSelectedFile(file);
+    if (!newVersionTitle || newVersionTitle === 'Initial Creative Deliverable') {
+      setNewVersionTitle(file.name.replace(/\.[^/.]+$/, ''));
+    }
+    setIsReadingVersionFile(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setNewVersionUrl(dataUrl);
+    } catch (err) {
+      console.error('Failed to read deliverable file:', err);
+    } finally {
+      setIsReadingVersionFile(false);
+    }
+  };
+
+  const handleUploadVersion = async () => {
     if (!newVersionTitle.trim()) return;
-    uploadDeliverableVersion({
+    const finalUrl =
+      newVersionUrl ||
+      `https://files.uicms.com/proofs/${encodeURIComponent(newVersionTitle.trim())}.pdf`;
+
+    const createdVersion = uploadDeliverableVersion({
       projectId: project.id,
       versionNumber: newVersionNum,
       title: newVersionTitle,
       description: newVersionNotes || newVersionTitle,
-      fileUrl: newVersionUrl,
+      fileUrl: finalUrl,
       notes: newVersionNotes,
       uploadedBy: currentUser.id,
     });
+
+    if (finalUrl.startsWith('data:') && createdVersion?.id) {
+      await saveLocalFileBlob(
+        createdVersion.id,
+        versionSelectedFile?.name || `${newVersionTitle}.pdf`,
+        versionSelectedFile?.type || 'application/pdf',
+        versionSelectedFile ? formatBytes(versionSelectedFile.size) : '2.4 MB',
+        finalUrl
+      );
+    }
+
     setShowUploadVersionModal(false);
     setNewVersionNotes('');
+    setVersionSelectedFile(null);
+    setNewVersionUrl('');
   };
 
   const handleSubmitQAForm = () => {
@@ -724,15 +777,40 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
                           <span className="text-slate-400">QA Status:</span>
                           <span className="font-semibold text-white uppercase">{v.qaResult || 'Pending QA'}</span>
                         </div>
-                        <a
-                          href={v.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Proof / Artwork</span>
-                        </a>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewModalFile({
+                                id: v.id,
+                                filename: v.title,
+                                size: 'Deliverable Proof',
+                                version: v.versionNumber,
+                                category: 'proofs',
+                                url: v.fileUrl || '',
+                                description: v.notes || v.description,
+                                uploadedByName: v.uploadedByName,
+                                uploadedAt: v.uploadedAt,
+                                projectId: project.id,
+                                projectName: project.projectName,
+                                status: v.status,
+                                isLocked: v.isLocked,
+                              })
+                            }
+                            className="text-xs font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Proof / Artwork</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => triggerLocalDownload(v.title, v.fileUrl || '')}
+                            className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                            title="Download Proof"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -741,9 +819,20 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
 
               {/* Project Files Repository */}
               <div className="pt-4 border-t border-slate-800 space-y-3">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Supporting Files & CI Assets ({projectFiles.length})
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Supporting Files & CI Assets ({projectFiles.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowUploadAssetModal(true)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Upload Local Asset</span>
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {projectFiles.map((f) => (
                     <div
@@ -757,14 +846,38 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
                           <span className="text-[10px] text-slate-400 uppercase">{f.category} • {f.size}</span>
                         </div>
                       </div>
-                      <a
-                        href={f.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreviewModalFile({
+                              id: f.id,
+                              filename: f.filename,
+                              size: f.size,
+                              version: f.version,
+                              category: f.category,
+                              url: f.url,
+                              description: f.description,
+                              uploadedByName: f.uploadedByName,
+                              uploadedAt: f.uploadedAt,
+                              projectId: project.id,
+                              projectName: project.projectName,
+                            })
+                          }
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                          title="Preview asset"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerLocalDownload(f.filename, f.url, f.type)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                          title="Download asset"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1418,10 +1531,13 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
 
       {/* Upload Deliverable Version Modal */}
       {showUploadVersionModal && (
-        <div className="fixed inset-0 z-60 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Upload New Deliverable Version</h3>
+        <div className="fixed inset-0 z-60 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-indigo-400">
+                <Upload className="w-4 h-4" />
+                <h3 className="text-sm font-bold text-white">Upload New Deliverable Version</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowUploadVersionModal(false)}
@@ -1430,31 +1546,118 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
                 ✕
               </button>
             </div>
-            <div className="space-y-3">
+
+            <div className="space-y-3.5">
+              {/* Local File Selector / Dropzone */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Version Identifier
+                  Deliverable Proof / File <span className="text-rose-400">*</span>
                 </label>
                 <input
-                  type="text"
-                  value={newVersionNum}
-                  onChange={(e) => setNewVersionNum(e.target.value)}
-                  placeholder="e.g. V1.0, V1.1, V2.0"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  ref={versionFileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleVersionFileSelect(e.target.files[0]);
+                    }
+                  }}
                 />
+
+                {!versionSelectedFile ? (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setVersionIsDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setVersionIsDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setVersionIsDragging(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleVersionFileSelect(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    onClick={() => versionFileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-1.5 ${
+                      versionIsDragging
+                        ? 'border-indigo-500 bg-indigo-500/10'
+                        : 'border-slate-800 hover:border-indigo-500/60 bg-slate-950/60 hover:bg-slate-950'
+                    }`}
+                  >
+                    <FolderOpen className="w-5 h-5 text-indigo-400" />
+                    <p className="text-xs font-semibold text-white">
+                      Drop local deliverable proof file here, or{' '}
+                      <span className="text-indigo-400 underline">browse</span>
+                    </p>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      PDF, PNG, JPG, SVG, MP4, ZIP
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {newVersionUrl.startsWith('data:image/') ? (
+                        <img
+                          src={newVersionUrl}
+                          alt="Deliverable thumbnail"
+                          className="w-10 h-10 rounded-lg object-cover border border-slate-800"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-white block truncate">
+                          {versionSelectedFile.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {formatBytes(versionSelectedFile.size)} • Ready
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => versionFileInputRef.current?.click()}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Version Title / Headline
-                </label>
-                <input
-                  type="text"
-                  value={newVersionTitle}
-                  onChange={(e) => setNewVersionTitle(e.target.value)}
-                  placeholder="e.g. Master High-Resolution Print Separations"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Version
+                  </label>
+                  <input
+                    type="text"
+                    value={newVersionNum}
+                    onChange={(e) => setNewVersionNum(e.target.value)}
+                    placeholder="e.g. V1.0, V1.1"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Version Title / Headline
+                  </label>
+                  <input
+                    type="text"
+                    value={newVersionTitle}
+                    onChange={(e) => setNewVersionTitle(e.target.value)}
+                    placeholder="e.g. Master High-Resolution Print Separations"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
               </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Version Release Notes
@@ -1468,7 +1671,8 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => setShowUploadVersionModal(false)}
@@ -1478,15 +1682,30 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
               </button>
               <button
                 type="button"
+                disabled={isReadingVersionFile}
                 onClick={handleUploadVersion}
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-colors"
               >
-                Upload & Move to Internal QA
+                {isReadingVersionFile ? 'Processing File...' : 'Upload & Move to Internal QA'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Upload Local Asset Modal */}
+      <UploadLocalDeliverableModal
+        isOpen={showUploadAssetModal}
+        onClose={() => setShowUploadAssetModal(false)}
+        defaultProjectId={project.id}
+      />
+
+      {/* Deliverable & Asset Preview Modal */}
+      <DeliverablePreviewModal
+        file={previewModalFile}
+        onClose={() => setPreviewModalFile(null)}
+        onOpenProject={() => {}}
+      />
     </div>
   );
 };

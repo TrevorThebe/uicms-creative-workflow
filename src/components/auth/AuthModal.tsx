@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Eye,
@@ -43,6 +44,8 @@ export const AuthModal: React.FC = () => {
     registerUser,
     forgotPassword,
     resetPassword,
+    inactivityNotice,
+    setInactivityNotice,
     users,
     setCurrentUser,
   } = useApp();
@@ -318,6 +321,26 @@ export const AuthModal: React.FC = () => {
 
         {/* Body content */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Inactivity Auto-Logout Timeout Notice */}
+          {inactivityNotice && (
+            <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-500/50 flex items-start gap-3 text-amber-200 text-xs animate-in fade-in shadow-lg">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold text-amber-300 block text-xs">
+                  Session Timed Out (1-Min Inactivity)
+                </span>
+                <span className="text-amber-200/90 leading-relaxed">{inactivityNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInactivityNotice(null)}
+                className="text-amber-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Feedback Alerts */}
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 flex items-start gap-3 text-rose-300 text-xs animate-in fade-in">
