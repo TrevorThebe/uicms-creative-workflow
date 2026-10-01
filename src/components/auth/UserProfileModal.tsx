@@ -140,7 +140,7 @@ export const UserProfileModal: React.FC = () => {
         <div className="p-6 pb-4 border-b border-slate-800 flex items-start justify-between bg-slate-950/60">
           <div className="flex items-center gap-3.5">
             <img
-              src={avatar || currentUser.avatar}
+              src={avatar || currentUser.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'}
               alt={currentUser.name}
               className="w-13 h-13 rounded-2xl object-cover ring-2 ring-indigo-500/40 shadow-lg"
             />

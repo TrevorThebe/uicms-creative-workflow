@@ -1237,7 +1237,7 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
                     projectChat.map((m) => (
                       <div key={m.id} className="flex items-start gap-2.5">
                         <img
-                          src={m.senderAvatar}
+                          src={m.senderAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                           alt={m.senderName}
                           className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-700"
                         />

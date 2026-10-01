@@ -47,7 +47,7 @@ export const TeamWorkloadView: React.FC<TeamWorkloadViewProps> = ({ onOpenProjec
             >
               <div className="flex items-start gap-3">
                 <img
-                  src={user.avatar}
+                  src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                   alt={user.name}
                   className="w-12 h-12 rounded-full object-cover ring-2 ring-indigo-500/30"
                 />

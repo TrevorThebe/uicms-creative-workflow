@@ -279,7 +279,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
           {/* Avatar Thumbnail with Camera Action Badge */}
           <div className="relative group cursor-pointer flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
             <img
-              src={currentAvatar || DEFAULT_AVATAR_PRESETS[0].url}
+              src={currentAvatar || DEFAULT_AVATAR_PRESETS[0]?.url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
               alt={userName}
               className={`${avatarDimensions} rounded-2xl object-cover ring-2 ring-indigo-500/40 shadow-lg group-hover:opacity-80 transition-all`}
             />

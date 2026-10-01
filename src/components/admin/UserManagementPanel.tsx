@@ -275,7 +275,7 @@ export const UserManagementPanel: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <img
-                            src={u.avatar}
+                            src={u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                             alt={u.name}
                             className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
                           />

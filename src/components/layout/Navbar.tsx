@@ -288,7 +288,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
               className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition-all text-left"
             >
               <img
-                src={currentUser.avatar}
+                src={currentUser.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'}
                 alt={currentUser.name}
                 className="w-6 h-6 rounded-full object-cover ring-1 ring-indigo-500/40"
               />
@@ -309,7 +309,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
                 <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 mb-2">
                   <div className="flex items-center gap-2.5">
                     <img
-                      src={currentUser.avatar}
+                      src={currentUser.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'}
                       alt={currentUser.name}
                       className="w-8 h-8 rounded-full object-cover ring-2 ring-indigo-500/40"
                     />
@@ -381,7 +381,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
                         }`}
                       >
                         <img
-                          src={u.avatar}
+                          src={u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                           alt={u.name}
                           className="w-7 h-7 rounded-full object-cover flex-shrink-0 ring-1 ring-slate-700"
                         />

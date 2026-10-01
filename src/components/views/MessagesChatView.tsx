@@ -534,7 +534,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                         >
                           <div className="relative flex-shrink-0">
                             <img
-                              src={user.avatar}
+                              src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                               alt={user.name}
                               className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-700"
                             />
@@ -647,7 +647,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                 <>
                   <div className="relative flex-shrink-0">
                     <img
-                      src={activeChannel.userRef.avatar}
+                      src={activeChannel.userRef.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={activeChannel.userRef.name}
                       className="w-9 h-9 rounded-full object-cover ring-2 ring-indigo-500/40"
                     />
@@ -724,7 +724,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                   >
                     {/* Sender Avatar */}
                     <img
-                      src={msg.senderAvatar}
+                      src={msg.senderAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={msg.senderName}
                       className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-800 flex-shrink-0 mt-0.5"
                     />
@@ -853,7 +853,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                     onClick={() => addMention(m.name)}
                     className="w-full text-left px-2 py-1.5 rounded hover:bg-indigo-600 hover:text-white flex items-center gap-2 text-slate-300 transition-colors"
                   >
-                    <img src={m.avatar} alt={m.name} className="w-5 h-5 rounded-full object-cover" />
+                    <img src={m.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'} alt={m.name} className="w-5 h-5 rounded-full object-cover" />
                     <span className="font-medium text-xs">{m.name}</span>
                     <span className="text-[10px] opacity-70 ml-auto">{m.roleTitle}</span>
                   </button>
@@ -1088,7 +1088,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <img
-                            src={m.avatar}
+                            src={m.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                             alt={m.name}
                             className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-700"
                           />
@@ -1160,7 +1160,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                 {/* User Profile Card */}
                 <div className="text-center p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                   <img
-                    src={activeChannel.userRef.avatar}
+                    src={activeChannel.userRef.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                     alt={activeChannel.userRef.name}
                     className="w-16 h-16 rounded-full object-cover mx-auto ring-2 ring-indigo-500/50 shadow-lg"
                   />
