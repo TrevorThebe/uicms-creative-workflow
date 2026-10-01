@@ -162,8 +162,31 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
             // Compress to efficient JPEG data URL
             const compressed = canvas.toDataURL('image/jpeg', 0.82);
-            onAvatarChange(compressed);
-            setUploadSuccess(`"${file.name}" optimized and uploaded!`);
+            
+            // Upload to phpMyAdmin backend folder
+            fetch('/php-backend/api/upload.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                base64: compressed,
+                filename: file.name,
+                type: 'avatar'
+              })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.status === 'success' && data.url) {
+                onAvatarChange(data.url);
+                setUploadSuccess(`"${file.name}" saved to avatars folder!`);
+              } else {
+                onAvatarChange(compressed);
+                setUploadSuccess(`"${file.name}" uploaded successfully!`);
+              }
+            })
+            .catch(() => {
+              onAvatarChange(compressed);
+              setUploadSuccess(`"${file.name}" uploaded successfully!`);
+            });
           } else {
             onAvatarChange(result);
             setUploadSuccess(`"${file.name}" uploaded successfully!`);
@@ -177,7 +200,28 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
       };
 
       img.onerror = () => {
-        onAvatarChange(result);
+        // Fallback upload to backend
+        fetch('/php-backend/api/upload.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base64: result,
+            filename: file.name,
+            type: 'avatar'
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success' && data.url) {
+            onAvatarChange(data.url);
+          } else {
+            onAvatarChange(result);
+          }
+        })
+        .catch(() => {
+          onAvatarChange(result);
+        });
+        
         setUploadSuccess(`"${file.name}" uploaded successfully!`);
         setIsProcessing(false);
         setTimeout(() => setUploadSuccess(null), 3000);

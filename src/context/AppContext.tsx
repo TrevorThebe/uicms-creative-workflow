@@ -471,34 +471,7 @@ const fetchDatabaseState = async () => {
         adminConfig: normalizeAdminConfig(dataset.admin_settings ?? dataset.adminSettings ?? dataset.adminConfig ?? EMPTY_ADMIN_CONFIG),
       };
 
-      try {
-        const localData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
-        const localUsers = normalizeUsers(localData.users ?? []);
-        const emails = new Set(nextState.users.map((user) => user.email.trim().toLowerCase()).filter(Boolean));
-        nextState.users = [
-          ...nextState.users,
-          ...localUsers.filter((user) => {
-            const email = user.email.trim().toLowerCase();
-            if (!email || emails.has(email)) return false;
-            emails.add(email);
-            return true;
-          }),
-        ];
-        nextState.projects = mergeMissingRecords(nextState.projects, normalizeProjects(localData.projects ?? []));
-        nextState.tasks = mergeMissingRecords(nextState.tasks, normalizeTasks(localData.tasks ?? []));
-        nextState.files = mergeMissingRecords(nextState.files, localData.files ?? []);
-        nextState.versions = mergeMissingRecords(nextState.versions, normalizeVersions(localData.versions ?? []));
-        nextState.qaSubmissions = mergeMissingRecords(nextState.qaSubmissions, normalizeQaSubmissions(localData.qaSubmissions ?? []));
-        nextState.approvals = mergeMissingRecords(nextState.approvals, normalizeApprovals(localData.approvals ?? []));
-        nextState.feedbackItems = mergeMissingRecords(nextState.feedbackItems, normalizeFeedbackItems(localData.feedbackItems ?? []));
-        nextState.notifications = mergeMissingRecords(nextState.notifications, normalizeNotifications(localData.notifications ?? []));
-        nextState.chatMessages = mergeMissingRecords(nextState.chatMessages, normalizeChatMessages(localData.chatMessages ?? []));
-        nextState.activityLogs = mergeMissingRecords(nextState.activityLogs, normalizeActivityLogs(localData.activityLogs ?? []));
-        nextState.clients = mergeMissingRecords(nextState.clients, normalizeClients(localData.clients ?? []));
-      } catch {
-        // Keep the database state when browser storage is unavailable or invalid.
-      }
-
+      // Sourced 100% from phpMyAdmin database - no local storage merging to prevent drift.
       if (nextState.users.length === 0 && nextState.projects.length === 0) {
         nextState.users = INITIAL_USERS;
         nextState.projects = INITIAL_PROJECTS;

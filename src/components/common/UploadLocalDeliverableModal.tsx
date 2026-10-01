@@ -42,6 +42,7 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileDataUrl, setFileDataUrl] = useState<string>('');
   const [isReading, setIsReading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   // Metadata form
@@ -123,11 +124,28 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
       return;
     }
 
+    setIsUploading(true);
     try {
-      const finalUrl =
-        uploadMode === 'local'
-          ? fileDataUrl || `https://files.uicms.com/uploads/${encodeURIComponent(filename.trim())}`
-          : externalUrl.trim() || `https://files.uicms.com/uploads/${encodeURIComponent(filename.trim())}`;
+      let finalUrl = '';
+      
+      if (uploadMode === 'local' && selectedFile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('type', 'file');
+
+        const uploadResponse = await fetch('/php-backend/api/upload.php', {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadResult = await uploadResponse.json();
+        if (uploadResult.status === 'success' && uploadResult.url) {
+          finalUrl = uploadResult.url;
+        } else {
+          throw new Error(uploadResult.message || 'Failed to upload file to backend server');
+        }
+      } else {
+        finalUrl = fileDataUrl || externalUrl.trim() || `https://files.uicms.com/uploads/${encodeURIComponent(filename.trim())}`;
+      }
 
       // Upload file to app state
       const createdFile = uploadFile({
@@ -163,9 +181,11 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
       }
 
       setTimeout(() => {
+        setIsUploading(false);
         onClose();
       }, 1000);
     } catch (err: any) {
+      setIsUploading(false);
       console.error('File upload error:', err);
       setErrorMessage(err?.message || 'An error occurred while uploading the file.');
     }
@@ -465,11 +485,11 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
             </button>
             <button
               type="submit"
-              disabled={isReading}
+              disabled={isReading || isUploading}
               className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold flex items-center gap-2 shadow-sm transition-colors"
             >
               <Upload className="w-4 h-4" />
-              <span>{isReading ? 'Reading File...' : 'Upload & Add to Vault'}</span>
+              <span>{isReading ? 'Reading File...' : isUploading ? 'Uploading to Server...' : 'Upload & Add to Vault'}</span>
             </button>
           </div>
         </form>
