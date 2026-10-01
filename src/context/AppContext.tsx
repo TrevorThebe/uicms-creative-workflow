@@ -24,6 +24,21 @@ import {
   WorkflowStage,
 } from '../types';
 import { calculateBriefCompleteness } from '../data/briefSchemas';
+import {
+  INITIAL_ACTIVITY_LOGS,
+  INITIAL_ADMIN_CONFIG,
+  INITIAL_APPROVALS,
+  INITIAL_CHAT_MESSAGES,
+  INITIAL_CLIENTS,
+  INITIAL_FEEDBACK,
+  INITIAL_FILES,
+  INITIAL_NOTIFICATIONS,
+  INITIAL_PROJECTS,
+  INITIAL_QA_SUBMISSIONS,
+  INITIAL_TASKS,
+  INITIAL_USERS,
+  INITIAL_VERSIONS,
+} from '../data/initialData';
 
 const EMPTY_USER: User = {
   id: 'usr-admin',
@@ -461,6 +476,22 @@ const fetchDatabaseState = async () => {
         // Keep the database state when browser storage is unavailable or invalid.
       }
 
+      if (nextState.users.length === 0 && nextState.projects.length === 0) {
+        nextState.users = INITIAL_USERS;
+        nextState.projects = INITIAL_PROJECTS;
+        nextState.tasks = INITIAL_TASKS;
+        nextState.files = INITIAL_FILES;
+        nextState.versions = INITIAL_VERSIONS;
+        nextState.qaSubmissions = INITIAL_QA_SUBMISSIONS;
+        nextState.approvals = INITIAL_APPROVALS;
+        nextState.feedbackItems = INITIAL_FEEDBACK;
+        nextState.notifications = INITIAL_NOTIFICATIONS;
+        nextState.chatMessages = INITIAL_CHAT_MESSAGES;
+        nextState.activityLogs = INITIAL_ACTIVITY_LOGS;
+        nextState.clients = INITIAL_CLIENTS;
+        nextState.adminConfig = INITIAL_ADMIN_CONFIG;
+      }
+
       return nextState;
     } catch {
       // Ignore unreachable endpoints and try the next candidate.
@@ -471,20 +502,20 @@ const fetchDatabaseState = async () => {
 };
 
 const EMPTY_STATE = () => ({
-  users: [] as User[],
-  currentUser: EMPTY_USER,
-  projects: [] as Project[],
-  tasks: [] as Task[],
-  files: [] as ProjectFile[],
-  versions: [] as DeliverableVersion[],
-  qaSubmissions: [] as QASubmission[],
-  approvals: [] as ClientApprovalRecord[],
-  feedbackItems: [] as FeedbackItem[],
-  notifications: [] as Notification[],
-  chatMessages: [] as ChatMessage[],
-  activityLogs: [] as ActivityLog[],
-  clients: [] as ClientRecord[],
-  adminConfig: EMPTY_ADMIN_CONFIG,
+  users: INITIAL_USERS,
+  currentUser: INITIAL_USERS[0] || EMPTY_USER,
+  projects: INITIAL_PROJECTS,
+  tasks: INITIAL_TASKS,
+  files: INITIAL_FILES,
+  versions: INITIAL_VERSIONS,
+  qaSubmissions: INITIAL_QA_SUBMISSIONS,
+  approvals: INITIAL_APPROVALS,
+  feedbackItems: INITIAL_FEEDBACK,
+  notifications: INITIAL_NOTIFICATIONS,
+  chatMessages: INITIAL_CHAT_MESSAGES,
+  activityLogs: INITIAL_ACTIVITY_LOGS,
+  clients: INITIAL_CLIENTS,
+  adminConfig: INITIAL_ADMIN_CONFIG,
 });
 
 interface AppContextType {

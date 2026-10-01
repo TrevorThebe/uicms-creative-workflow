@@ -17,6 +17,7 @@ import {
 import { UserManagementPanel } from '../admin/UserManagementPanel';
 import { DatabaseSyncManager } from '../admin/DatabaseSyncManager';
 import { SystemUsageAnalyticsPanel } from '../admin/SystemUsageAnalyticsPanel';
+import { PhpBackendStatusIndicator } from '../admin/PhpBackendStatusIndicator';
 
 export const AdministrationAuditView: React.FC = () => {
   const {
@@ -141,6 +142,9 @@ export const AdministrationAuditView: React.FC = () => {
           <span>Reset Demo System State</span>
         </button>
       </div>
+
+      {/* PHP Backend REST API & MySQL Connectivity Status Poller */}
+      <PhpBackendStatusIndicator />
 
       {/* Recharts System Usage Telemetry & Analytics (Exclusively Visible to Superusers) */}
       <SystemUsageAnalyticsPanel />
