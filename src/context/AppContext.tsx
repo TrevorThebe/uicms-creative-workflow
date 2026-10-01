@@ -410,9 +410,23 @@ const mergeMissingRecords = (databaseRows: any[], localRows: any[]): any[] => {
 };
 
 const fetchDatabaseState = async () => {
+  const sessionRaw = typeof window !== 'undefined' ? sessionStorage.getItem(SESSION_STORAGE_KEY) : null;
+  let sessionUser: any = null;
+  if (sessionRaw) {
+    try {
+      sessionUser = JSON.parse(sessionRaw);
+    } catch {}
+  }
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (sessionUser?.role) {
+    headers['X-User-Role'] = sessionUser.role;
+    headers['X-User-Id'] = sessionUser.id;
+    if (sessionUser.departmentId) headers['X-Department-Id'] = sessionUser.departmentId;
+  }
+
   for (const endpoint of DB_DATA_ENDPOINTS) {
     try {
-      const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+      const response = await fetch(endpoint, { headers });
       if (!response.ok) continue;
 
       const contentType = response.headers.get('content-type') || '';

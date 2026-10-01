@@ -75,6 +75,10 @@ foreach ($tables as $tableName) {
         $ensureColumn($tableName, 'app_payload', 'LONGTEXT NULL');
     }
 }
+$ensureColumn('users', 'personal_email', 'VARCHAR(150) NULL');
+$ensureColumn('users', 'is_temp_password', 'TINYINT(1) NOT NULL DEFAULT 0');
+$ensureColumn('users', 'temp_password_expires_at', 'VARCHAR(50) NULL');
+$ensureColumn('users', 'must_change_password', 'TINYINT(1) NOT NULL DEFAULT 0');
 $ensureColumn('chat_messages', 'recipient_id', 'VARCHAR(50) NULL');
 $ensureColumn('chat_messages', 'channel_id', 'VARCHAR(50) NULL');
 $ensureColumn('chat_messages', 'attachments', 'JSON NULL');
@@ -85,6 +89,10 @@ $ensureColumn('activity_logs', 'metadata', 'JSON NULL');
 $readValue = function (array $row, string $key, $fallback = null) {
     $aliases = [
         'title' => ['name'],
+        'personal_email' => ['personalEmail'],
+        'is_temp_password' => ['isTempPassword'],
+        'temp_password_expires_at' => ['tempPasswordExpiresAt'],
+        'must_change_password' => ['mustChangePassword'],
         'assigned_to_user_id' => ['ownerId'],
         'assigned_to_name' => ['assignedToName'],
         'department_id' => ['departmentId'],
@@ -394,6 +402,12 @@ try {
     $result = [];
     $targets = $table === 'all' ? $tables : [$table];
 
+    // Read caller identity headers for Row-Level Security (RLS) enforcement
+    $requestUserRole = $_SERVER['HTTP_X_USER_ROLE'] ?? null;
+    $requestUserId = $_SERVER['HTTP_X_USER_ID'] ?? null;
+    $requestClientId = $_SERVER['HTTP_X_CLIENT_ID'] ?? null;
+    $requestDeptId = $_SERVER['HTTP_X_DEPARTMENT_ID'] ?? null;
+
     foreach ($targets as $tableName) {
         $stmt = $db->query("SELECT * FROM `{$tableName}` ORDER BY 1");
         $rows = $stmt->fetchAll();
@@ -428,6 +442,39 @@ try {
         }
 
         unset($row);
+
+        // Security & Row-Level Access Policy Enforcement (RLS)
+        if ($tableName === 'users') {
+            // NEVER leak raw passwords or password hashes across the wire
+            foreach ($rows as &$uRow) {
+                unset($uRow['password']);
+                if ($requestUserRole === 'client') {
+                    // Clients should not see internal personal recovery emails or credentials
+                    unset($uRow['personal_email']);
+                    unset($uRow['personalEmail']);
+                    unset($uRow['is_temp_password']);
+                    unset($uRow['isTempPassword']);
+                    unset($uRow['temp_password_expires_at']);
+                }
+            }
+            unset($uRow);
+        }
+
+        // Row-Level Security for Clients
+        if ($requestUserRole === 'client' && !empty($requestClientId)) {
+            if ($tableName === 'projects') {
+                $rows = array_values(array_filter($rows, fn($r) => ($r['client_id'] ?? $r['clientId'] ?? '') === $requestClientId));
+            } elseif ($tableName === 'client_approvals') {
+                $rows = array_values(array_filter($rows, fn($r) => ($r['client_id'] ?? $r['clientId'] ?? '') === $requestClientId));
+            } elseif ($tableName === 'tasks') {
+                $rows = array_values(array_filter($rows, fn($r) => !empty($r['is_client_facing']) || !empty($r['isClientFacing'])));
+            } elseif ($tableName === 'admin_settings') {
+                $rows = [
+                    'appName' => $rows['system_config']['appName'] ?? 'UICMS Creative Workflow',
+                    'appSubtitle' => $rows['system_config']['appSubtitle'] ?? 'Brief. Create. Review. Approve. Deliver.',
+                ];
+            }
+        }
 
         $result[match ($tableName) {
             'deliverable_versions' => 'versions',

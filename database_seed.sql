@@ -54,7 +54,11 @@ CREATE TABLE `users` (
   `id` VARCHAR(50) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `email` VARCHAR(150) NOT NULL UNIQUE,
+  `personal_email` VARCHAR(150) NULL,
   `password` VARCHAR(255) NOT NULL,
+  `is_temp_password` TINYINT(1) NOT NULL DEFAULT 0,
+  `temp_password_expires_at` VARCHAR(50) NULL,
+  `must_change_password` TINYINT(1) NOT NULL DEFAULT 0,
   `role` ENUM('super_admin', 'department_manager', 'account_manager', 'designer', 'qa_user', 'client') NOT NULL,
   `role_title` VARCHAR(150) NOT NULL,
   `department_id` VARCHAR(50) NULL,
@@ -352,19 +356,19 @@ INSERT INTO `departments` (`id`, `name`, `description`, `icon`, `active`) VALUES
 ('development', 'Technology & Systems Engineering', 'Custom web portals, API integrations, and workflow automation tooling.', 'Code', 1);
 
 -- 2. Users
-INSERT INTO `users` (`id`, `name`, `email`, `password`, `role`, `role_title`, `department_id`, `avatar`, `active`, `is_suspended`, `suspension_reason`, `workload_count`) VALUES
-('usr-admin', 'Eleanor Vance', 'eleanor.vance@uicms.com', 'Password123!', 'super_admin', 'Chief Operations & Systems Administrator', 'marketing', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 4),
-('usr-mkt-mgr', 'Marcus Sterling', 'marcus.sterling@uicms.com', 'Password123!', 'department_manager', 'Head of Marketing & Creative Production', 'marketing', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 6),
-('usr-trv-mgr', 'Sophia Chen', 'sophia.chen@uicms.com', 'Password123!', 'department_manager', 'Head of Incentive Travel Logistics & Collateral', 'incentive_travel', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 8),
-('usr-ram-mgr', 'David Ndlovu', 'david.ndlovu@uicms.com', 'Password123!', 'department_manager', 'Head of Online (RAM) & Rewards Engineering', 'online_ram', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 7),
-('usr-am-1', 'Chloe Bennett', 'chloe.bennett@uicms.com', 'Password123!', 'account_manager', 'Senior Account Director (Enterprise Brands)', 'marketing', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 9),
-('usr-am-2', 'Julian Rossi', 'julian.rossi@uicms.com', 'Password123!', 'account_manager', 'Account Manager (Travel & RAM Programmes)', 'incentive_travel', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 6),
-('usr-des-1', 'Liam Gallagher', 'liam.gallagher@uicms.com', 'Password123!', 'designer', 'Senior Art Director & Print Specialist', 'incentive_travel', 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 5),
-('usr-des-2', 'Amara Okafor', 'amara.okafor@uicms.com', 'Password123!', 'designer', 'Motion Graphics & Video Producer', 'marketing', 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 4),
-('usr-des-3', 'Lucas Thorne', 'lucas.thorne@uicms.com', 'Password123!', 'designer', 'Digital Product & UI Designer', 'online_ram', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 5),
-('usr-qa-1', 'Hannah Wright', 'hannah.wright@uicms.com', 'Password123!', 'qa_user', 'Quality Assurance & CI Compliance Lead', 'marketing', 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 7),
-('usr-qa-2', 'Tariq Mansour', 'tariq.mansour@uicms.com', 'Password123!', 'qa_user', 'Senior QA Inspector & Print Pre-flight Auditor', 'incentive_travel', 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 6),
-('usr-client-1', 'Bradley Cooper', 'bradley.cooper@discovery.co.za', 'Password123!', 'client', 'VP Marketing & Brand Experience (Discovery Group)', 'marketing', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 2);
+INSERT INTO `users` (`id`, `name`, `email`, `personal_email`, `password`, `role`, `role_title`, `department_id`, `avatar`, `active`, `is_suspended`, `suspension_reason`, `workload_count`) VALUES
+('usr-admin', 'Eleanor Vance', 'eleanor.vance@uicms.com', 'eleanor.vance@gmail.com', 'Password123!', 'super_admin', 'Chief Operations & Systems Administrator', 'marketing', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 4),
+('usr-mkt-mgr', 'Marcus Sterling', 'marcus.sterling@uicms.com', 'marcus.sterling.home@gmail.com', 'Password123!', 'department_manager', 'Head of Marketing & Creative Production', 'marketing', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 6),
+('usr-trv-mgr', 'Sophia Chen', 'sophia.chen@uicms.com', 'sophia.chen.personal@gmail.com', 'Password123!', 'department_manager', 'Head of Incentive Travel Logistics & Collateral', 'incentive_travel', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 8),
+('usr-ram-mgr', 'David Ndlovu', 'david.ndlovu@uicms.com', 'david.ndlovu.personal@gmail.com', 'Password123!', 'department_manager', 'Head of Online (RAM) & Rewards Engineering', 'online_ram', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 7),
+('usr-am-1', 'Chloe Bennett', 'chloe.bennett@uicms.com', 'chloe.bennett.personal@gmail.com', 'Password123!', 'account_manager', 'Senior Account Director (Enterprise Brands)', 'marketing', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 9),
+('usr-am-2', 'Julian Rossi', 'julian.rossi@uicms.com', 'julian.rossi.personal@gmail.com', 'Password123!', 'account_manager', 'Account Manager (Travel & RAM Programmes)', 'incentive_travel', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 6),
+('usr-des-1', 'Liam Gallagher', 'liam.gallagher@uicms.com', 'liam.gallagher.creative@gmail.com', 'Password123!', 'designer', 'Senior Art Director & Print Specialist', 'incentive_travel', 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 5),
+('usr-des-2', 'Amara Okafor', 'amara.okafor@uicms.com', 'amara.okafor.motion@gmail.com', 'Password123!', 'designer', 'Motion Graphics & Video Producer', 'marketing', 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 4),
+('usr-des-3', 'Lucas Thorne', 'lucas.thorne@uicms.com', 'lucas.thorne.design@gmail.com', 'Password123!', 'designer', 'Digital Product & UI Designer', 'online_ram', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 5),
+('usr-qa-1', 'Hannah Wright', 'hannah.wright@uicms.com', 'hannah.wright.qa@gmail.com', 'Password123!', 'qa_user', 'Quality Assurance & CI Compliance Lead', 'marketing', 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 7),
+('usr-qa-2', 'Tariq Mansour', 'tariq.mansour@uicms.com', 'tariq.mansour.qa@gmail.com', 'Password123!', 'qa_user', 'Senior QA Inspector & Print Pre-flight Auditor', 'incentive_travel', 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 6),
+('usr-client-1', 'Bradley Cooper', 'bradley.cooper@discovery.co.za', 'bradley.cooper.private@gmail.com', 'Password123!', 'client', 'VP Marketing & Brand Experience (Discovery Group)', 'marketing', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', 1, 0, NULL, 2);
 
 -- 3. Clients
 INSERT INTO `clients` (`id`, `name`, `code`, `logo_url`, `brand_guidelines`, `ci_document_url`, `primary_contact_name`, `primary_contact_email`, `primary_contact_phone`, `primary_contact_position`, `website`, `notes`, `default_ci_colors`, `font_requirements`, `active_projects_count`) VALUES
@@ -470,6 +474,68 @@ INSERT INTO `activity_logs` (`id`, `project_id`, `user_id`, `user_name`, `action
 -- 13. System Settings
 INSERT INTO `admin_settings` (`setting_key`, `setting_value`) VALUES
 ('system_config', '{"appName": "UICMS Creative Workflow", "appSubtitle": "Brief. Create. Review. Approve. Deliver.", "emailNotifications": {"newRequests": true, "assignment": true, "taskDue": true, "taskOverdue": true, "feedback": true, "approval": true, "qa": true, "completion": true}, "escalationRules": {"notify3DaysBefore": true, "notify1DayBefore": true, "notifyDueToday": true, "notifyOverdue": true, "escalate2DaysOverdue": true}, "activeDepartments": {"marketing": true, "incentive_travel": true, "online_ram": true, "development": false}, "workflowRules": {"enforceBriefLockForProduction": true, "enforceQABeforeClientReview": true, "enforceApprovalBeforeRelease": true, "allowManagerOverride": true}}');
+
+-- =============================================================================
+-- 14. ROW-LEVEL SECURITY (RLS) & MULTI-TENANT ISOLATION VIEWS
+-- Enforces row-level access control based on user identity, role, and department.
+-- =============================================================================
+
+-- View 1: Sanitized Users (Never exposes password hashes or raw credentials)
+CREATE OR REPLACE VIEW `vw_safe_users` AS
+SELECT 
+  `id`, `name`, `email`, `personal_email`, `role`, `role_title`, 
+  `department_id`, `avatar`, `active`, `is_suspended`, 
+  `suspension_reason`, `workload_count`, `created_at`, `updated_at`
+FROM `users`;
+
+-- View 2: Row-Level Security for Projects
+CREATE OR REPLACE VIEW `vw_rls_projects` AS
+SELECT p.*
+FROM `projects` p
+WHERE 
+  COALESCE(@uicms_current_role, 'super_admin') = 'super_admin'
+  OR (COALESCE(@uicms_current_role, '') = 'department_manager' AND p.department_id = COALESCE(@uicms_current_dept, p.department_id))
+  OR (COALESCE(@uicms_current_role, '') = 'client' AND p.client_id = COALESCE(@uicms_current_client_id, ''))
+  OR (
+    COALESCE(@uicms_current_role, '') IN ('designer', 'qa_user', 'account_manager')
+    AND (
+      p.accountable_user_id = COALESCE(@uicms_current_user_id, '')
+      OR p.project_owner_id = COALESCE(@uicms_current_user_id, '')
+      OR p.qa_owner_id = COALESCE(@uicms_current_user_id, '')
+      OR p.approver_id = COALESCE(@uicms_current_user_id, '')
+      OR JSON_CONTAINS(p.contributor_ids, JSON_QUOTE(COALESCE(@uicms_current_user_id, '')))
+    )
+  );
+
+-- View 3: Row-Level Security for Tasks
+CREATE OR REPLACE VIEW `vw_rls_tasks` AS
+SELECT t.*
+FROM `tasks` t
+JOIN `projects` p ON t.project_id = p.id
+WHERE 
+  COALESCE(@uicms_current_role, 'super_admin') = 'super_admin'
+  OR (COALESCE(@uicms_current_role, '') = 'client' AND p.client_id = COALESCE(@uicms_current_client_id, '') AND t.is_client_facing = 1)
+  OR (COALESCE(@uicms_current_role, '') != 'client' AND (t.assigned_to_user_id = COALESCE(@uicms_current_user_id, '') OR p.department_id = COALESCE(@uicms_current_dept, p.department_id)));
+
+-- View 4: Row-Level Security for Client Approvals
+CREATE OR REPLACE VIEW `vw_rls_client_approvals` AS
+SELECT ca.*
+FROM `client_approvals` ca
+JOIN `projects` p ON ca.project_id = p.id
+WHERE 
+  COALESCE(@uicms_current_role, 'super_admin') = 'super_admin'
+  OR (COALESCE(@uicms_current_role, '') = 'client' AND (ca.client_id = COALESCE(@uicms_current_client_id, '') OR p.client_id = COALESCE(@uicms_current_client_id, '')))
+  OR (COALESCE(@uicms_current_role, '') != 'client');
+
+-- View 5: Row-Level Security for Feedback Items
+CREATE OR REPLACE VIEW `vw_rls_feedback_items` AS
+SELECT f.*
+FROM `feedback_items` f
+JOIN `projects` p ON f.project_id = p.id
+WHERE 
+  COALESCE(@uicms_current_role, 'super_admin') = 'super_admin'
+  OR (COALESCE(@uicms_current_role, '') = 'client' AND p.client_id = COALESCE(@uicms_current_client_id, ''))
+  OR (COALESCE(@uicms_current_role, '') != 'client');
 
 SET FOREIGN_KEY_CHECKS = 1;
 COMMIT;

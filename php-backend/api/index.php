@@ -10,16 +10,8 @@ $database = new Database();
 $db = $database->getConnection();
 
 $routes = [
-    "GET /api/projects.php"     => "List or search workflow projects",
-    "POST /api/projects.php"    => "Create new creative request",
-    "PUT /api/projects.php"     => "Update project stage / lock brief",
-    "GET /api/tasks.php"        => "Fetch tasks for projects or users",
-    "POST /api/tasks.php"       => "Create / update task checklist",
-    "GET /api/deliverables.php" => "Retrieve deliverable versions & QA reports",
-    "POST /api/deliverables.php"=> "Upload new version and submit QA audit",
-    "POST /api/approvals.php"   => "Client digital sign-off and approval hashes",
-    "POST /api/auth.php"        => "Authenticate user and get session payload",
-    "POST /api/files.php"       => "Upload attachments / generate S3 URLs"
+    "GET /api/data.php"     => "Synchronize and query system state collections",
+    "POST /api/data.php"    => "Persist system records and transactions"
 ];
 
 sendResponse(200, [

@@ -24,12 +24,12 @@ services:
     container_name: uicms-php
     restart: unless-stopped
     environment:
-      DB_HOST: mysql
-      DB_NAME: uicms_workflow
-      DB_USER: uicms_user
-      DB_PASS: SecurePass2026!
-      DB_PORT: 3306
-      APP_ENV: production
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_NAME: ${DB_NAME:-uicms_workflow}
+      DB_USER: ${DB_USER:-uicms_user}
+      DB_PASS: ${DB_PASS:-SecurePass2026!}
+      DB_PORT: ${DB_PORT:-3306}
+      APP_ENV: ${APP_ENV:-production}
     volumes:
       - .:/var/www/html
     depends_on:
@@ -43,10 +43,10 @@ services:
     container_name: uicms-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: RootPassword2026!
-      MYSQL_DATABASE: uicms_workflow
-      MYSQL_USER: uicms_user
-      MYSQL_PASSWORD: SecurePass2026!
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-RootPassword2026!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-uicms_workflow}
+      MYSQL_USER: ${MYSQL_USER:-uicms_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SecurePass2026!}
     ports:
       - "3306:3306"
     volumes:
