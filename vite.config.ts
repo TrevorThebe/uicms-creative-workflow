@@ -50,7 +50,7 @@ function phpBackendPlugin(): Plugin {
             if (req.headers.origin) headers.origin = req.headers.origin;
 
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
+            const timeout = setTimeout(() => controller.abort(), 600);
 
             const phpResp = await fetch(fullUrl, {
               method: req.method,
@@ -81,16 +81,62 @@ function phpBackendPlugin(): Plugin {
           }
         }
 
-        if (req.url?.startsWith('/php-backend/uploads/')) {
+        // Live PHP host offline; fallback handlers for uploads and static assets
+        const cleanPath = req.url ? req.url.split('?')[0] : '';
+
+        if (cleanPath.startsWith('/php-backend/uploads/')) {
+          const relPath = cleanPath.replace(/^\/php-backend\//, '');
+          const filePath = path.resolve(__dirname, 'php-backend', relPath.replace(/^uploads\//, 'uploads/'));
+          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeMap: Record<string, string> = {
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.png': 'image/png',
+              '.gif': 'image/gif',
+              '.webp': 'image/webp',
+              '.svg': 'image/svg+xml',
+              '.pdf': 'application/pdf',
+            };
+            res.statusCode = 200;
+            res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+            return fs.createReadStream(filePath).pipe(res);
+          }
           res.statusCode = 404;
           res.setHeader('Content-Type', 'text/plain; charset=utf-8');
           return res.end('Uploaded file not found');
         }
 
-        if (req.url?.startsWith('/php-backend/api/upload.php')) {
-          res.statusCode = 503;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          return res.end(JSON.stringify({ status: 'error', message: 'PHP upload backend unavailable' }));
+        if (cleanPath === '/php-backend/api/upload.php') {
+          try {
+            const bodyStr = bodyBuffer ? bodyBuffer.toString('utf-8') : '{}';
+            let parsed: any = {};
+            try { parsed = JSON.parse(bodyStr); } catch {}
+            const type = parsed.type === 'avatar' ? 'avatars' : 'files';
+            const destDir = path.resolve(__dirname, 'php-backend/uploads', type);
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+            let savedName = `up_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+            if (parsed.filename) savedName = `${Date.now()}_${path.basename(parsed.filename)}`;
+
+            if (parsed.data && typeof parsed.data === 'string' && parsed.data.includes('base64,')) {
+              const base64Data = parsed.data.split('base64,')[1];
+              fs.writeFileSync(path.join(destDir, savedName), Buffer.from(base64Data, 'base64'));
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(JSON.stringify({
+              status: 'success',
+              message: 'File saved successfully.',
+              url: `/php-backend/uploads/${type}/${savedName}`,
+              filename: savedName,
+            }));
+          } catch {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(JSON.stringify({ status: 'error', message: 'Failed to process file upload.' }));
+          }
         }
 
         res.setHeader('Content-Type', 'application/json');

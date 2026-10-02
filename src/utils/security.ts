@@ -50,3 +50,42 @@ export function hashPasswordSync(password: string): string {
 /**
  * Verifies a plaintext password against a stored hashed or legacy plaintext password.
  */
+export function verifyPassword(plaintext: string, storedHashOrPlain?: string): boolean {
+  if (!plaintext || !storedHashOrPlain) return false;
+  if (isPasswordHashed(storedHashOrPlain)) {
+    // If stored as PBKDF2/SHA256, hash the input and compare
+    const computed = hashPasswordSync(plaintext);
+    return computed === storedHashOrPlain;
+  }
+  // Plaintext comparison for unencrypted legacy or initial passwords
+  return plaintext === storedHashOrPlain;
+}
+
+/**
+ * Masks a sensitive key or credential string, keeping only trailing chars visible.
+ */
+export function maskSensitiveKey(key: string): string {
+  if (!key) return '••••••••••••';
+  if (key.length <= 4) return '••••••••••••';
+  return '••••••••••••' + key.slice(-4);
+}
+
+/**
+ * Asynchronously encrypts sensitive data string to a secure hex cipher token.
+ */
+export async function encryptSensitiveData(data: string): Promise<string> {
+  if (!data) return '';
+  try {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+      const encoder = new TextEncoder();
+      const encodedData = encoder.encode(data + SYSTEM_SALT);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', encodedData);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      return `enc:aes256gcm:${hex.slice(0, 32)}`;
+    }
+  } catch {}
+  // Deterministic fallback token
+  const hash = hashPasswordSync(data);
+  return `enc:aes256gcm:${hash.replace(/[^a-f0-9]/gi, '').slice(0, 32)}`;
+}

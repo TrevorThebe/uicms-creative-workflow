@@ -69,7 +69,7 @@ export const AuthModal: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  if (!isAuthModalOpen) return null;
+  if (!isAuthModalOpen && isAuthenticated) return null;
 
   const resetMessages = () => {
     setErrorMessage(null);
@@ -387,6 +387,45 @@ export const AuthModal: React.FC = () => {
                   <span>{isLoading ? 'Authenticating...' : 'Sign In to Workspace'}</span>
                 </button>
               </form>
+
+              {/* Seed Database Credentials Quick-Select Helper */}
+              <div className="pt-3 border-t border-slate-800/80 text-[11px] text-slate-400 space-y-1.5">
+                <div className="flex items-center justify-between text-slate-300">
+                  <span className="font-semibold text-slate-300">Default Seed Password:</span>
+                  <span className="font-mono text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-800/40 text-[10px]">
+                    Password123!
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Click an enterprise account to fill credentials:
+                </p>
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                  {[
+                    { role: 'Super Admin', email: 'eleanor.vance@uicms.com' },
+                    { role: 'Dept Manager', email: 'marcus.sterling@uicms.com' },
+                    { role: 'Account Director', email: 'chloe.bennett@uicms.com' },
+                    { role: 'QA Lead', email: 'maya.lin@uicms.com' },
+                  ].map((acc) => (
+                    <button
+                      key={acc.email}
+                      type="button"
+                      onClick={() => {
+                        setLoginEmail(acc.email);
+                        setLoginPassword('Password123!');
+                        resetMessages();
+                      }}
+                      className="px-2 py-1.5 rounded-lg bg-slate-950 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-700/50 text-left transition-colors group"
+                    >
+                      <div className="text-[10px] font-bold text-slate-300 group-hover:text-indigo-300">
+                        {acc.role}
+                      </div>
+                      <div className="text-[9px] text-slate-500 truncate group-hover:text-slate-400">
+                        {acc.email}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 

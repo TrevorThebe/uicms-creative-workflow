@@ -52,6 +52,7 @@ export interface User {
   active: boolean;
   isSuspended?: boolean;
   suspendedReason?: string;
+  suspensionReason?: string;
   suspendedAt?: string;
   suspendedBy?: string;
   workloadCount?: number;

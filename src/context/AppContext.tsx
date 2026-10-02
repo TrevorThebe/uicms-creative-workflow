@@ -28,6 +28,26 @@ import {
   getAllStoredFileDataUrls,
   deleteLocalFileBlob,
 } from '../utils/localFileStore';
+import {
+  INITIAL_USERS,
+  INITIAL_PROJECTS,
+  INITIAL_TASKS,
+  INITIAL_CLIENTS,
+  INITIAL_APPROVALS,
+  INITIAL_FEEDBACK,
+  INITIAL_NOTIFICATIONS,
+  INITIAL_CHAT_MESSAGES,
+  INITIAL_ACTIVITY_LOGS,
+  INITIAL_FILES,
+  INITIAL_VERSIONS,
+  INITIAL_QA_SUBMISSIONS,
+  INITIAL_ADMIN_CONFIG,
+} from '../data/initialData';
+import {
+  isPasswordHashed,
+  hashPasswordSync,
+  verifyPassword,
+} from '../utils/security';
 const EMPTY_USER = {} as User;
 
 const EMPTY_ADMIN_CONFIG: AdminConfig = {
@@ -621,6 +641,7 @@ interface AppContextType {
     userId: string,
     updates: Partial<Pick<User, 'name' | 'email' | 'personalEmail' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
   ) => { success: boolean; error?: string; user?: User };
+  encryptAllUserPasswords: () => { success: boolean; count: number };
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -700,72 +721,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     const hydrateFromDatabase = async () => {
-      let sessionPayload: any = null;
+      // 1. Always load dataset from database (or fall back to seed data if API is starting/offline)
+      const nextState = await fetchDatabaseState();
+      if (nextState) {
+        // Restore files and versions with any local files preserved in IndexedDB
+        let resolvedFiles = nextState.files;
+        let resolvedVersions = nextState.versions;
+        try {
+          const storedUrls = await getAllStoredFileDataUrls();
+          if (storedUrls && storedUrls.size > 0) {
+            resolvedFiles = (nextState.files || []).map((f: ProjectFile) => {
+              if (storedUrls.has(f.id)) {
+                return { ...f, url: storedUrls.get(f.id)! };
+              }
+              return f;
+            });
+            resolvedVersions = (nextState.versions || []).map((v: DeliverableVersion) => {
+              if (storedUrls.has(v.id)) {
+                return { ...v, fileUrl: storedUrls.get(v.id)! };
+              }
+              return v;
+            });
+          }
+        } catch (err) {
+          console.warn('Failed to hydrate files from IndexedDB:', err);
+        }
+
+        setUsers(nextState.users);
+        setProjects(nextState.projects);
+        setTasks(nextState.tasks);
+        setFiles(resolvedFiles);
+        setVersions(resolvedVersions);
+        setQaSubmissions(nextState.qaSubmissions);
+        setApprovals(nextState.approvals);
+        setFeedbackItems(nextState.feedbackItems);
+        setNotifications(nextState.notifications);
+        setChatMessages(nextState.chatMessages);
+        setActivityLogs(nextState.activityLogs);
+        setClients(nextState.clients);
+        setAdminConfig(nextState.adminConfig);
+      } else {
+        // Fallback initial dataset if PHP database endpoint is unreachable
+        setUsers(INITIAL_USERS);
+        setProjects(INITIAL_PROJECTS);
+        setTasks(INITIAL_TASKS);
+        setFiles(INITIAL_FILES);
+        setVersions(INITIAL_VERSIONS);
+        setQaSubmissions(INITIAL_QA_SUBMISSIONS);
+        setApprovals(INITIAL_APPROVALS);
+        setFeedbackItems(INITIAL_FEEDBACK);
+        setNotifications(INITIAL_NOTIFICATIONS);
+        setChatMessages(INITIAL_CHAT_MESSAGES);
+        setActivityLogs(INITIAL_ACTIVITY_LOGS);
+        setClients(INITIAL_CLIENTS);
+        setAdminConfig(INITIAL_ADMIN_CONFIG);
+      }
+
+      // 2. Check for active server-side session or active client-side session
+      let sessionUser: User | null = null;
       try {
         const response = await fetch(`${AUTH_ENDPOINT}?action=session`, { credentials: 'include', headers: { Accept: 'application/json' } });
-        sessionPayload = await response.json().catch(() => null);
-        if (!response.ok || sessionPayload?.status !== 'success') sessionPayload = null;
+        if (response.ok) {
+          const sessionPayload = await response.json().catch(() => null);
+          if (sessionPayload?.status === 'success' && sessionPayload.user) {
+            sessionUser = sessionPayload.user;
+          }
+        }
       } catch {}
 
-      if (!sessionPayload?.user) {
+      // If no server session returned, check client-side session within inactivity limit
+      if (!sessionUser) {
+        try {
+          const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const userObj = parsed.user || (parsed.id && parsed.email ? parsed : null);
+            const lastActive = parsed.lastActivityAt || 0;
+            if (userObj && Date.now() - lastActive < INACTIVITY_TIMEOUT_MS) {
+              sessionUser = userObj;
+            } else {
+              localStorage.removeItem(SESSION_STORAGE_KEY);
+            }
+          }
+        } catch {}
+      }
+
+      if (sessionUser) {
+        setCurrentUser(sessionUser);
+        setIsAuthenticated(true);
+        setIsAuthModalOpen(false);
+        lastActivityRef.current = Date.now();
+        setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
+      } else {
         localStorage.removeItem(SESSION_STORAGE_KEY);
         setCurrentUser(EMPTY_USER);
         setIsAuthenticated(false);
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
-        const timeoutNotice = localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
-        if (timeoutNotice) setInactivityNotice(timeoutNotice);
-        setDatabaseReady(true);
-        return;
       }
 
-      setCurrentUser(sessionPayload.user);
-      setIsAuthenticated(true);
-      setIsAuthModalOpen(false);
-      lastActivityRef.current = Date.now();
-      setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
-      const nextState = await fetchDatabaseState();
-      if (!nextState) {
-        setDatabaseReady(true);
-        return;
-      }
-
-      // Restore files and versions with any local files preserved in IndexedDB
-      let resolvedFiles = nextState.files;
-      let resolvedVersions = nextState.versions;
-      try {
-        const storedUrls = await getAllStoredFileDataUrls();
-        if (storedUrls && storedUrls.size > 0) {
-          resolvedFiles = (nextState.files || []).map((f: ProjectFile) => {
-            if (storedUrls.has(f.id)) {
-              return { ...f, url: storedUrls.get(f.id)! };
-            }
-            return f;
-          });
-          resolvedVersions = (nextState.versions || []).map((v: DeliverableVersion) => {
-            if (storedUrls.has(v.id)) {
-              return { ...v, fileUrl: storedUrls.get(v.id)! };
-            }
-            return v;
-          });
-        }
-      } catch (err) {
-        console.warn('Failed to hydrate files from IndexedDB:', err);
-      }
-
-      setUsers(nextState.users);
-      setProjects(nextState.projects);
-      setTasks(nextState.tasks);
-      setFiles(resolvedFiles);
-      setVersions(resolvedVersions);
-      setQaSubmissions(nextState.qaSubmissions);
-      setApprovals(nextState.approvals);
-      setFeedbackItems(nextState.feedbackItems);
-      setNotifications(nextState.notifications);
-      setChatMessages(nextState.chatMessages);
-      setActivityLogs(nextState.activityLogs);
-      setClients(nextState.clients);
-      setAdminConfig(nextState.adminConfig);
+      const timeoutNotice = localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
+      if (timeoutNotice) setInactivityNotice(timeoutNotice);
 
       setApplicationStateLoaded(true);
       setDatabaseReady(true);
@@ -797,11 +853,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetch(`${AUTH_ENDPOINT}?action=session`, { credentials: 'include', headers: { Accept: 'application/json' } })
           .then((response) => {
             if (response.ok) return;
-            localStorage.removeItem(SESSION_STORAGE_KEY);
-            setInactivityNotice('Your server session expired. Please sign in again.');
-            setIsAuthenticated(false);
-            setIsAuthModalOpen(true);
-            setAuthModalMode('login');
+            // Only sign out if the server explicitly responded with 401 unauthenticated
+            if (response.status === 401) {
+              localStorage.removeItem(SESSION_STORAGE_KEY);
+              setInactivityNotice('Your server session expired. Please sign in again.');
+              setIsAuthenticated(false);
+              setIsAuthModalOpen(true);
+              setAuthModalMode('login');
+            }
           })
           .catch(() => {});
       }
@@ -2262,48 +2321,127 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     departmentId: DepartmentId;
     avatar?: string;
   }): Promise<{ success: boolean; error?: string; user?: User }> => {
+    const cleanEmail = userData.email.trim().toLowerCase();
     const result = await postAuthAction('register', {
       name: userData.name,
-      email: userData.email,
+      email: cleanEmail,
       password: userData.password,
       roleTitle: userData.roleTitle,
       departmentId: userData.departmentId,
       avatar: userData.avatar,
     });
-    if (!result.success || !result.user) return { success: false, error: result.error };
 
-    const newUser = result.user as User;
-    setCurrentUser(newUser);
+    let newUser: User;
+    if (result.success && result.user) {
+      newUser = result.user as User;
+    } else {
+      // Local registration fallback
+      const existing = users.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+      if (existing) {
+        return { success: false, error: 'An account with this email address already exists.' };
+      }
+      newUser = {
+        id: `usr-${Date.now().toString(36)}`,
+        name: userData.name.trim(),
+        email: cleanEmail,
+        password: hashPasswordSync(userData.password),
+        role: userData.role,
+        roleTitle: userData.roleTitle || 'Creative Specialist',
+        departmentId: userData.departmentId,
+        avatar: userData.avatar || '',
+        active: true,
+        isSuspended: false,
+        workloadCount: 0,
+      };
+      setUsers((prev) => [newUser, ...prev]);
+    }
+
+    const safeUser: User = { ...newUser };
+    delete (safeUser as any).password;
+
+    setCurrentUser(safeUser);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
     setInactivityNotice(null);
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ lastActivityAt: Date.now() }));
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user: safeUser, lastActivityAt: Date.now() }));
     localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     lastActivityRef.current = Date.now();
     setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
-    applyDatabaseState(await fetchDatabaseState());
 
-    return { success: true, user: newUser };
+    const refreshed = await fetchDatabaseState();
+    if (refreshed) {
+      applyDatabaseState(refreshed);
+    }
+
+    return { success: true, user: safeUser };
   };
 
   const loginUser = async (
     email: string,
     password: string
   ): Promise<{ success: boolean; error?: string; user?: User }> => {
-    const result = await postAuthAction('login', { email, password });
-    if (!result.success || !result.user) return { success: false, error: result.error };
-    const user = result.user as User;
-    setCurrentUser(user);
+    const cleanEmail = email.trim().toLowerCase();
+    const result = await postAuthAction('login', { email: cleanEmail, password });
+    let authenticatedUser: User | null = null;
+
+    if (result.success && result.user) {
+      authenticatedUser = result.user as User;
+    } else {
+      // Offline fallback: Check against loaded database users or seed accounts
+      const candidate =
+        users.find(
+          (u) =>
+            u.email.trim().toLowerCase() === cleanEmail ||
+            (u.personalEmail && u.personalEmail.trim().toLowerCase() === cleanEmail)
+        ) ||
+        INITIAL_USERS.find(
+          (u) =>
+            u.email.trim().toLowerCase() === cleanEmail ||
+            (u.personalEmail && u.personalEmail.trim().toLowerCase() === cleanEmail)
+        );
+
+      if (candidate) {
+        if (candidate.isSuspended) {
+          return {
+            success: false,
+            error: `This account is suspended: ${candidate.suspensionReason || 'Please contact system administrator.'}`,
+          };
+        }
+        if (candidate.active === false) {
+          return { success: false, error: 'This user account is inactive. Please contact manager.' };
+        }
+        if (verifyPassword(password, candidate.password)) {
+          authenticatedUser = candidate;
+        } else {
+          return { success: false, error: 'Invalid email address or password.' };
+        }
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Invalid email address or password.',
+        };
+      }
+    }
+
+    const safeUser: User = { ...authenticatedUser };
+    delete (safeUser as any).password;
+
+    setCurrentUser(safeUser);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
     setInactivityNotice(null);
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ lastActivityAt: Date.now() }));
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user: safeUser, lastActivityAt: Date.now() }));
     localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     lastActivityRef.current = Date.now();
     setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
-    applyDatabaseState(await fetchDatabaseState());
 
-    return { success: true, user };
+    // Refresh state from database if available
+    const refreshed = await fetchDatabaseState();
+    if (refreshed) {
+      applyDatabaseState(refreshed);
+    }
+
+    return { success: true, user: safeUser };
   };
 
   const forgotPassword = async (
@@ -2389,7 +2527,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newPassword: string
   ): Promise<{ success: boolean; error?: string; message?: string }> => {
     const result = await postAuthAction('reset-password', { email, token: resetToken, password: newPassword });
-    return { success: result.success, error: result.error };
+    if (result.success) return { success: true };
+
+    // Fallback: update in-memory user
+    const cleanEmail = email.trim().toLowerCase();
+    const userIdx = users.findIndex(
+      (u) =>
+        u.email.trim().toLowerCase() === cleanEmail ||
+        (u.personalEmail && u.personalEmail.trim().toLowerCase() === cleanEmail)
+    );
+    if (userIdx !== -1) {
+      const hashed = hashPasswordSync(newPassword);
+      setUsers((prev) =>
+        prev.map((u, i) =>
+          i === userIdx
+            ? { ...u, password: hashed, isTempPassword: false, mustChangePassword: false }
+            : u
+        )
+      );
+      return { success: true, message: 'Password reset successfully.' };
+    }
+
+    return { success: false, error: result.error || 'User account not found.' };
+  };
+
+  const encryptAllUserPasswords = (): { success: boolean; count: number } => {
+    let count = 0;
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.password && !isPasswordHashed(u.password)) {
+          count++;
+          return { ...u, password: hashPasswordSync(u.password) };
+        }
+        return u;
+      })
+    );
+    return { success: true, count };
   };
 
   const logoutUser = () => {
@@ -2654,6 +2827,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsProfileModalOpen,
         registerUser,
         loginUser,
+        encryptAllUserPasswords,
         forgotPassword,
         resetPassword,
         resetUserEmail,
