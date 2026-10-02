@@ -53,14 +53,17 @@ if (is_array($input) && !empty($input['base64']) && !empty($input['filename'])) 
     $filename = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $input['filename']);
     
     // Split mime type and base64 payload
-    if (preg_match('/^data:image\/(\w+);base64,/', $base64Data, $typeMatch)) {
+    if (preg_match('/^data:image\/([a-zA-Z0-9.+-]+);base64,/i', $base64Data, $typeMatch)) {
         $ext = strtolower($typeMatch[1]);
+        if ($ext === 'svg+xml') {
+            $ext = 'svg';
+        }
         $base64Data = substr($base64Data, strpos($base64Data, ',') + 1);
     } else {
         $ext = pathinfo($filename, PATHINFO_EXTENSION) ?: 'jpg';
     }
     
-    $decoded = base64_decode($base64Data);
+    $decoded = base64_decode($base64Data, true);
     if ($decoded === false) {
         sendResponse(400, ['status' => 'error', 'message' => 'Invalid base64 payload']);
     }

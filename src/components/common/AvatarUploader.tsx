@@ -123,10 +123,24 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
       // If svg file, keep directly if under 100KB, else convert
       if (file.type === 'image/svg+xml' && file.size < 100 * 1024) {
-        onAvatarChange(result);
-        setUploadSuccess(`"${file.name}" uploaded successfully!`);
-        setIsProcessing(false);
-        setTimeout(() => setUploadSuccess(null), 3000);
+        fetch('/php-backend/api/upload.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base64: result, filename: file.name, type: 'avatar' }),
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success' || !data.url) {
+              throw new Error(data.message || 'Avatar upload failed.');
+            }
+            onAvatarChange(data.url);
+            setUploadSuccess(`"${file.name}" saved to avatars folder!`);
+            setTimeout(() => setUploadSuccess(null), 3000);
+          })
+          .catch((error) => {
+            setUploadError(error instanceof Error ? error.message : 'Avatar upload failed.');
+          })
+          .finally(() => setIsProcessing(false));
         return;
       }
 

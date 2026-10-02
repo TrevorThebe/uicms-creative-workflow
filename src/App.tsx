@@ -1,29 +1,28 @@
-import React, { lazy, Suspense, useState } from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
+import { ExecutiveDashboard } from './components/dashboard/ExecutiveDashboard';
+import { StageWorkflowBoard } from './components/kanban/StageWorkflowBoard';
+import { ProjectDetailWorkspace } from './components/project/ProjectDetailWorkspace';
 import { NewRequestWizard } from './components/requests/NewRequestWizard';
+import { MyTasksView } from './components/views/MyTasksView';
+import { ProjectTrackerView } from './components/views/ProjectTrackerView';
+import { ApprovalsCenterView } from './components/views/ApprovalsCenterView';
+import { CalendarDeadlinesView } from './components/views/CalendarDeadlinesView';
+import { TeamWorkloadView } from './components/views/TeamWorkloadView';
+import { ClientsBrandCIView } from './components/views/ClientsBrandCIView';
+import { ReportsAnalyticsView } from './components/views/ReportsAnalyticsView';
+import { WeeklyDepartmentSummaryView } from './components/views/WeeklyDepartmentSummaryView';
+import { UserGuideReadmeView } from './components/views/UserGuideReadmeView';
+import { AdministrationAuditView } from './components/views/AdministrationAuditView';
+import { FileRepositoryView } from './components/views/FileRepositoryView';
+import { DepartmentsWorkflowView } from './components/views/DepartmentsWorkflowView';
+import { MessagesChatView } from './components/views/MessagesChatView';
+import { NotificationsCenterView } from './components/views/NotificationsCenterView';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
-
-const ExecutiveDashboard = lazy(() => import('./components/dashboard/ExecutiveDashboard').then((module) => ({ default: module.ExecutiveDashboard })));
-const StageWorkflowBoard = lazy(() => import('./components/kanban/StageWorkflowBoard').then((module) => ({ default: module.StageWorkflowBoard })));
-const ProjectDetailWorkspace = lazy(() => import('./components/project/ProjectDetailWorkspace').then((module) => ({ default: module.ProjectDetailWorkspace })));
-const MyTasksView = lazy(() => import('./components/views/MyTasksView').then((module) => ({ default: module.MyTasksView })));
-const ProjectTrackerView = lazy(() => import('./components/views/ProjectTrackerView').then((module) => ({ default: module.ProjectTrackerView })));
-const ApprovalsCenterView = lazy(() => import('./components/views/ApprovalsCenterView').then((module) => ({ default: module.ApprovalsCenterView })));
-const CalendarDeadlinesView = lazy(() => import('./components/views/CalendarDeadlinesView').then((module) => ({ default: module.CalendarDeadlinesView })));
-const TeamWorkloadView = lazy(() => import('./components/views/TeamWorkloadView').then((module) => ({ default: module.TeamWorkloadView })));
-const ClientsBrandCIView = lazy(() => import('./components/views/ClientsBrandCIView').then((module) => ({ default: module.ClientsBrandCIView })));
-const ReportsAnalyticsView = lazy(() => import('./components/views/ReportsAnalyticsView').then((module) => ({ default: module.ReportsAnalyticsView })));
-const WeeklyDepartmentSummaryView = lazy(() => import('./components/views/WeeklyDepartmentSummaryView').then((module) => ({ default: module.WeeklyDepartmentSummaryView })));
-const UserGuideReadmeView = lazy(() => import('./components/views/UserGuideReadmeView').then((module) => ({ default: module.UserGuideReadmeView })));
-const AdministrationAuditView = lazy(() => import('./components/views/AdministrationAuditView').then((module) => ({ default: module.AdministrationAuditView })));
-const FileRepositoryView = lazy(() => import('./components/views/FileRepositoryView').then((module) => ({ default: module.FileRepositoryView })));
-const DepartmentsWorkflowView = lazy(() => import('./components/views/DepartmentsWorkflowView').then((module) => ({ default: module.DepartmentsWorkflowView })));
-const MessagesChatView = lazy(() => import('./components/views/MessagesChatView').then((module) => ({ default: module.MessagesChatView })));
-const NotificationsCenterView = lazy(() => import('./components/views/NotificationsCenterView').then((module) => ({ default: module.NotificationsCenterView })));
 
 const AppContent: React.FC = () => {
   const { activeNavSection, setActiveNavSection, selectedProjectId, setSelectedProjectId } = useApp();
@@ -61,11 +60,10 @@ const AppContent: React.FC = () => {
           {/* New Request Modal */}
           <NewRequestWizard />
 
-          <Suspense fallback={<div className="p-6 text-sm text-slate-400" role="status">Loading view...</div>}>
-            {/* View Routing */}
-            {activeNavSection === 'dashboard' && (
-              <ExecutiveDashboard onOpenProject={handleOpenProject} />
-            )}
+          {/* View Routing */}
+          {activeNavSection === 'dashboard' && (
+            <ExecutiveDashboard onOpenProject={handleOpenProject} />
+          )}
 
           {activeNavSection === 'all_projects' && (
             <StageWorkflowBoard onOpenProject={handleOpenProject} />
@@ -127,15 +125,14 @@ const AppContent: React.FC = () => {
             <AdministrationAuditView />
           )}
 
-            {/* Dedicated 8-Tab Project Workspace Overlay */}
-            {selectedProjectId && (
-              <ProjectDetailWorkspace
-                projectId={selectedProjectId}
-                initialTab={projectInitialTab}
-                onClose={handleCloseProject}
-              />
-            )}
-          </Suspense>
+          {/* Dedicated 8-Tab Project Workspace Overlay */}
+          {selectedProjectId && (
+            <ProjectDetailWorkspace
+              projectId={selectedProjectId}
+              initialTab={projectInitialTab}
+              onClose={handleCloseProject}
+            />
+          )}
         </main>
       </div>
     </div>
