@@ -44,31 +44,288 @@ $collectionTables = [
 ];
 
 $ensureColumn = function (string $tableName, string $columnName, string $definition) use ($db): void {
-    $stmt = $db->prepare(
-        'SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
-    );
-    $stmt->execute([':table' => $tableName, ':column' => $columnName]);
-    if ((int)$stmt->fetchColumn() === 0) {
-        $db->exec("ALTER TABLE `{$tableName}` ADD COLUMN `{$columnName}` {$definition}");
-    }
+    try {
+        $tblCheck = $db->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table');
+        $tblCheck->execute([':table' => $tableName]);
+        if ((int)$tblCheck->fetchColumn() === 0) return;
+
+        $stmt = $db->prepare(
+            'SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
+        );
+        $stmt->execute([':table' => $tableName, ':column' => $columnName]);
+        if ((int)$stmt->fetchColumn() === 0) {
+            $db->exec("ALTER TABLE `{$tableName}` ADD COLUMN `{$columnName}` {$definition}");
+        }
+    } catch (Throwable $e) {}
 };
 
-$db->exec("CREATE TABLE IF NOT EXISTS project_files (
-    id VARCHAR(50) NOT NULL PRIMARY KEY,
-    project_id VARCHAR(50) NOT NULL,
-    filename VARCHAR(255) NOT NULL,
-    size VARCHAR(50) NOT NULL DEFAULT '',
-    type VARCHAR(150) NOT NULL DEFAULT '',
-    version VARCHAR(20) NOT NULL DEFAULT 'V0.1',
-    uploaded_by VARCHAR(50) NOT NULL DEFAULT '',
-    uploaded_by_name VARCHAR(100) NOT NULL DEFAULT '',
-    uploaded_at VARCHAR(50) NOT NULL,
-    category VARCHAR(50) NOT NULL DEFAULT 'proofs',
-    url VARCHAR(1000) NOT NULL DEFAULT '',
-    description TEXT NULL,
-    app_payload LONGTEXT NULL,
-    KEY idx_project (project_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+// Bootstrap core table schemas if not yet present in MySQL/phpMyAdmin
+try {
+    $db->exec("SET FOREIGN_KEY_CHECKS = 0;");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `departments` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `name` VARCHAR(100) NOT NULL,
+        `description` TEXT NULL,
+        `icon` VARCHAR(50) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `users` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `name` VARCHAR(100) NOT NULL,
+        `email` VARCHAR(150) NOT NULL UNIQUE,
+        `personal_email` VARCHAR(150) NULL,
+        `password` VARCHAR(255) NOT NULL,
+        `role` VARCHAR(50) NOT NULL DEFAULT 'designer',
+        `role_title` VARCHAR(150) NOT NULL DEFAULT 'Team Member',
+        `department_id` VARCHAR(50) NULL,
+        `avatar` VARCHAR(500) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `is_suspended` TINYINT(1) NOT NULL DEFAULT 0,
+        `suspension_reason` TEXT NULL,
+        `is_temp_password` TINYINT(1) NOT NULL DEFAULT 0,
+        `temp_password_expires_at` VARCHAR(50) NULL,
+        `must_change_password` TINYINT(1) NOT NULL DEFAULT 0,
+        `workload_count` INT NOT NULL DEFAULT 0,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY `idx_dept` (`department_id`),
+        KEY `idx_role` (`role`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `clients` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `name` VARCHAR(150) NOT NULL,
+        `code` VARCHAR(20) NOT NULL UNIQUE,
+        `logo_url` VARCHAR(500) NULL,
+        `brand_guidelines` TEXT NULL,
+        `ci_document_url` VARCHAR(500) NULL,
+        `primary_contact_name` VARCHAR(100) NULL,
+        `primary_contact_email` VARCHAR(150) NULL,
+        `primary_contact_phone` VARCHAR(50) NULL,
+        `primary_contact_position` VARCHAR(100) NULL,
+        `website` VARCHAR(255) NULL,
+        `notes` TEXT NULL,
+        `default_ci_colors` JSON NULL,
+        `font_requirements` TEXT NULL,
+        `active_projects_count` INT NOT NULL DEFAULT 0,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `projects` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_number` INT NOT NULL DEFAULT 0,
+        `client_id` VARCHAR(50) NOT NULL,
+        `department_id` VARCHAR(50) NOT NULL DEFAULT 'marketing',
+        `request_type_id` VARCHAR(50) NOT NULL,
+        `project_name` VARCHAR(255) NOT NULL,
+        `campaign_name` VARCHAR(255) NULL,
+        `description` TEXT NULL,
+        `priority` VARCHAR(20) NOT NULL DEFAULT 'medium',
+        `stage` VARCHAR(50) NOT NULL DEFAULT 'REQUESTED',
+        `status` VARCHAR(50) NOT NULL DEFAULT 'on_track',
+        `version` VARCHAR(20) NOT NULL DEFAULT 'V0.1',
+        `accountable_user_id` VARCHAR(50) NULL,
+        `project_owner_id` VARCHAR(50) NULL,
+        `qa_owner_id` VARCHAR(50) NULL,
+        `approver_id` VARCHAR(50) NULL,
+        `contributor_ids` JSON NULL,
+        `created_at` VARCHAR(50) NOT NULL,
+        `updated_at` VARCHAR(50) NOT NULL,
+        `brief_due_date` VARCHAR(50) NULL,
+        `brief_locked_at` VARCHAR(50) NULL,
+        `brief_locked_by` VARCHAR(50) NULL,
+        `production_due_date` VARCHAR(50) NULL,
+        `internal_qa_due_date` VARCHAR(50) NULL,
+        `client_review_due_date` VARCHAR(50) NULL,
+        `client_approval_due_date` VARCHAR(50) NULL,
+        `final_qa_due_date` VARCHAR(50) NULL,
+        `release_date` VARCHAR(50) NULL,
+        `external_suppliers` TEXT NULL,
+        `next_action_task` VARCHAR(255) NULL,
+        `next_action_owner` VARCHAR(100) NULL,
+        `next_action_due` VARCHAR(50) NULL,
+        `approval_status` VARCHAR(50) NOT NULL DEFAULT 'not_requested',
+        `is_brief_locked` TINYINT(1) NOT NULL DEFAULT 0,
+        `is_version_locked` TINYINT(1) NOT NULL DEFAULT 0,
+        `brief_data` JSON NULL,
+        `brief_completeness` INT NOT NULL DEFAULT 0,
+        KEY `idx_client` (`client_id`),
+        KEY `idx_stage` (`stage`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `tasks` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `description` TEXT NULL,
+        `assigned_to` VARCHAR(50) NULL,
+        `assigned_to_name` VARCHAR(100) NULL,
+        `assigned_to_user_id` VARCHAR(50) NULL,
+        `role_required` VARCHAR(50) NULL,
+        `status` VARCHAR(50) NOT NULL DEFAULT 'todo',
+        `priority` VARCHAR(20) NOT NULL DEFAULT 'medium',
+        `due_date` VARCHAR(50) NULL,
+        `start_date` VARCHAR(50) NULL,
+        `completed_at` VARCHAR(50) NULL,
+        `stage` VARCHAR(50) NOT NULL DEFAULT 'PRODUCTION',
+        `is_client_facing` TINYINT(1) NOT NULL DEFAULT 0,
+        `comments_count` INT NOT NULL DEFAULT 0,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `project_files` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `filename` VARCHAR(255) NOT NULL,
+        `size` VARCHAR(50) NOT NULL DEFAULT '',
+        `type` VARCHAR(150) NOT NULL DEFAULT '',
+        `version` VARCHAR(20) NOT NULL DEFAULT 'V0.1',
+        `uploaded_by` VARCHAR(50) NOT NULL DEFAULT '',
+        `uploaded_by_name` VARCHAR(100) NOT NULL DEFAULT '',
+        `uploaded_at` VARCHAR(50) NOT NULL,
+        `category` VARCHAR(50) NOT NULL DEFAULT 'proofs',
+        `url` VARCHAR(1000) NOT NULL DEFAULT '',
+        `description` TEXT NULL,
+        `app_payload` LONGTEXT NULL,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `deliverable_versions` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `version_number` VARCHAR(20) NOT NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `file_url` VARCHAR(500) NOT NULL,
+        `preview_url` VARCHAR(500) NULL,
+        `uploaded_by` VARCHAR(50) NOT NULL,
+        `uploaded_by_name` VARCHAR(100) NOT NULL,
+        `uploaded_at` VARCHAR(50) NOT NULL,
+        `description` TEXT NULL,
+        `status` VARCHAR(50) NOT NULL DEFAULT 'draft',
+        `is_locked` TINYINT(1) NOT NULL DEFAULT 0,
+        `qa_result` VARCHAR(50) NULL,
+        `qa_notes` TEXT NULL,
+        `changelog` TEXT NULL,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `qa_submissions` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `version_id` VARCHAR(50) NOT NULL,
+        `result` VARCHAR(50) NOT NULL,
+        `performed_by` VARCHAR(50) NOT NULL,
+        `performed_by_name` VARCHAR(100) NOT NULL,
+        `performed_at` VARCHAR(50) NOT NULL,
+        `checklist` JSON NULL,
+        `overall_notes` TEXT NULL,
+        `passed_count` INT NULL DEFAULT 0,
+        `failed_count` INT NULL DEFAULT 0,
+        `na_count` INT NULL DEFAULT 0,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `client_approvals` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `version_id` VARCHAR(50) NOT NULL,
+        `version_number` VARCHAR(20) NOT NULL,
+        `client_id` VARCHAR(50) NOT NULL,
+        `client_name` VARCHAR(100) NOT NULL,
+        `client_position` VARCHAR(100) NULL,
+        `status` VARCHAR(50) NOT NULL,
+        `confirmation_text` TEXT NULL,
+        `changes_requested` JSON NULL,
+        `approved_at` VARCHAR(50) NOT NULL,
+        `signature_hash` VARCHAR(100) NULL,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `feedback_items` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `version_id` VARCHAR(50) NOT NULL,
+        `version_number` VARCHAR(20) NOT NULL,
+        `submitted_by` VARCHAR(50) NOT NULL,
+        `submitted_by_name` VARCHAR(100) NOT NULL,
+        `submitted_at` VARCHAR(50) NOT NULL,
+        `feedback_text` TEXT NOT NULL,
+        `attachment_url` VARCHAR(500) NULL,
+        `assigned_to` VARCHAR(50) NOT NULL,
+        `assigned_to_name` VARCHAR(100) NOT NULL,
+        `priority` VARCHAR(20) NOT NULL DEFAULT 'medium',
+        `status` VARCHAR(50) NOT NULL DEFAULT 'open',
+        `type` VARCHAR(50) NOT NULL DEFAULT 'action_required',
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `notifications` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `user_id` VARCHAR(50) NOT NULL,
+        `project_id` VARCHAR(50) NULL,
+        `type` VARCHAR(50) NOT NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `message` TEXT NOT NULL,
+        `is_read` TINYINT(1) NOT NULL DEFAULT 0,
+        `created_at` VARCHAR(50) NOT NULL,
+        `target_tab` VARCHAR(50) NULL,
+        KEY `idx_user` (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `chat_messages` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `sender_id` VARCHAR(50) NOT NULL,
+        `sender_name` VARCHAR(100) NOT NULL,
+        `sender_avatar` VARCHAR(500) NULL,
+        `message` TEXT NOT NULL,
+        `created_at` VARCHAR(50) NOT NULL,
+        `mentions` JSON NULL,
+        `referenced_task_id` VARCHAR(50) NULL,
+        `is_important` TINYINT(1) NOT NULL DEFAULT 0,
+        `recipient_id` VARCHAR(50) NULL,
+        `channel_id` VARCHAR(50) NULL,
+        `attachments` JSON NULL,
+        `referenced_version` VARCHAR(50) NULL,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `activity_logs` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `user_id` VARCHAR(50) NOT NULL,
+        `user_name` VARCHAR(100) NOT NULL,
+        `action` VARCHAR(100) NOT NULL,
+        `description` TEXT NOT NULL,
+        `timestamp` VARCHAR(50) NOT NULL,
+        `previous_stage` VARCHAR(50) NULL,
+        `new_stage` VARCHAR(50) NULL,
+        `version_ref` VARCHAR(100) NULL,
+        `metadata` JSON NULL,
+        KEY `idx_project` (`project_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS `admin_settings` (
+        `setting_key` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `setting_value` JSON NOT NULL,
+        `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Populate departments if empty
+    $deptCount = (int)$db->query("SELECT COUNT(*) FROM `departments`")->fetchColumn();
+    if ($deptCount === 0) {
+        $db->exec("INSERT INTO `departments` (`id`, `name`, `description`, `icon`, `active`) VALUES
+        ('marketing', 'Marketing & Creative Production', 'Brand campaigns, digital media, social content, and marketing collateral.', 'Palette', 1),
+        ('incentive_travel', 'Incentive Travel & Events Logistics', 'Travel programs, event materials, and print collateral.', 'Plane', 1),
+        ('online_ram', 'Online (RAM) & Rewards Engineering', 'Digital reward platforms, dealer programs, and online campaign assets.', 'Flame', 1),
+        ('development', 'Technology & Systems Engineering', 'Web applications, API integrations, and workflow automation.', 'Code', 1)");
+    }
+
+    $db->exec("SET FOREIGN_KEY_CHECKS = 1;");
+} catch (Throwable $e) {}
 
 foreach ($tables as $tableName) {
     if ($tableName !== 'departments' && $tableName !== 'admin_settings') {
@@ -216,11 +473,25 @@ $saveState = function (array $state, bool $onlyMissing = false) use ($db, $colle
     ];
     $savedRows = 0;
 
+    $db->exec("SET FOREIGN_KEY_CHECKS = 0;");
     foreach ($collectionTables as $collection => $tableName) {
-        $rows = $state[$collection] ?? [];
+        $rows = $state[$collection] ?? $state[match ($collection) {
+            'qa_submissions' => 'qaSubmissions',
+            'client_approvals' => 'approvals',
+            'feedback_items' => 'feedbackItems',
+            'chat_messages' => 'chatMessages',
+            'activity_logs' => 'activityLogs',
+            'project_files' => 'files',
+            'deliverable_versions' => 'versions',
+            default => $collection,
+        }] ?? [];
         if (!is_array($rows)) continue;
-        $columns = $db->query("SHOW COLUMNS FROM `{$tableName}`")->fetchAll(PDO::FETCH_COLUMN);
-        $columns = array_flip($columns);
+        try {
+            $columns = $db->query("SHOW COLUMNS FROM `{$tableName}`")->fetchAll(PDO::FETCH_COLUMN);
+            $columns = array_flip($columns);
+        } catch (Throwable $e) {
+            continue;
+        }
 
         foreach ($rows as $row) {
             if (!is_array($row)) continue;
@@ -345,6 +616,7 @@ $saveState = function (array $state, bool $onlyMissing = false) use ($db, $colle
         $savedRows++;
     }
 
+    $db->exec("SET FOREIGN_KEY_CHECKS = 1;");
     return $savedRows;
 };
 
@@ -409,8 +681,13 @@ try {
     $requestDeptId = $_SERVER['HTTP_X_DEPARTMENT_ID'] ?? null;
 
     foreach ($targets as $tableName) {
-        $stmt = $db->query("SELECT * FROM `{$tableName}` ORDER BY 1");
-        $rows = $stmt->fetchAll();
+        $rows = [];
+        try {
+            $stmt = $db->query("SELECT * FROM `{$tableName}` ORDER BY 1");
+            $rows = $stmt->fetchAll();
+        } catch (Throwable $e) {
+            $rows = [];
+        }
 
         if ($tableName === 'admin_settings') {
             $mapped = [];

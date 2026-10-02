@@ -54,6 +54,7 @@ CREATE TABLE `users` (
   `id` VARCHAR(50) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `email` VARCHAR(150) NOT NULL UNIQUE,
+  `personal_email` VARCHAR(150) NULL,
   `password` VARCHAR(255) NOT NULL,
   `role` ENUM('super_admin', 'department_manager', 'account_manager', 'designer', 'qa_user', 'client') NOT NULL,
   `role_title` VARCHAR(150) NOT NULL,
@@ -62,6 +63,9 @@ CREATE TABLE `users` (
   `active` TINYINT(1) NOT NULL DEFAULT 1,
   `is_suspended` TINYINT(1) NOT NULL DEFAULT 0,
   `suspension_reason` TEXT NULL,
+  `is_temp_password` TINYINT(1) NOT NULL DEFAULT 0,
+  `temp_password_expires_at` VARCHAR(50) NULL,
+  `must_change_password` TINYINT(1) NOT NULL DEFAULT 0,
   `workload_count` INT NOT NULL DEFAULT 0,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -347,5 +351,16 @@ INSERT INTO `departments` (`id`, `name`, `description`, `icon`, `active`) VALUES
 ('incentive_travel', 'Incentive Travel & Events Logistics', 'Travel programs, event materials, and print collateral.', 'Plane', 1),
 ('online_ram', 'Online (RAM) & Rewards Engineering', 'Digital reward platforms, dealer programs, and online campaign assets.', 'Flame', 1),
 ('development', 'Technology & Systems Engineering', 'Web applications, API integrations, and workflow automation.', 'Code', 1);
+
+-- Seed System Users (Default Password for initial setup is: Password123!)
+INSERT INTO `users` (
+  `id`, `name`, `email`, `personal_email`, `password`, 
+  `role`, `role_title`, `department_id`, `avatar`, 
+  `active`, `is_suspended`, `workload_count`
+) VALUES 
+('usr-admin-01', 'Alex Rivera', 'admin@uicms.local', 'alex.rivera@personal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'super_admin', 'Executive Creative Director & Super Admin', 'marketing', '', 1, 0, 0),
+('usr-mgr-01', 'Sarah Chen', 'sarah.chen@uicms.local', 'sarah.chen@personal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'department_manager', 'Creative Operations Manager', 'marketing', '', 1, 0, 0),
+('usr-des-01', 'Marcus Vance', 'marcus.vance@uicms.local', 'marcus.vance@personal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'designer', 'Senior Visual Designer', 'marketing', '', 1, 0, 0)
+ON DUPLICATE KEY UPDATE `password` = VALUES(`password`);
 SET FOREIGN_KEY_CHECKS = 1;
 COMMIT;

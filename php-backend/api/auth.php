@@ -18,6 +18,62 @@ $database = new Database();
 $db = $database->getConnection();
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Ensure users table and columns exist in database uicms_workflow
+if ($db !== null) {
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS `users` (
+            `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+            `name` VARCHAR(100) NOT NULL,
+            `email` VARCHAR(150) NOT NULL UNIQUE,
+            `personal_email` VARCHAR(150) NULL,
+            `password` VARCHAR(255) NOT NULL,
+            `role` VARCHAR(50) NOT NULL DEFAULT 'designer',
+            `role_title` VARCHAR(150) NOT NULL DEFAULT 'Team Member',
+            `department_id` VARCHAR(50) NULL DEFAULT 'marketing',
+            `avatar` VARCHAR(500) NULL,
+            `active` TINYINT(1) NOT NULL DEFAULT 1,
+            `is_suspended` TINYINT(1) NOT NULL DEFAULT 0,
+            `suspension_reason` TEXT NULL,
+            `is_temp_password` TINYINT(1) NOT NULL DEFAULT 0,
+            `temp_password_expires_at` VARCHAR(50) NULL,
+            `must_change_password` TINYINT(1) NOT NULL DEFAULT 0,
+            `workload_count` INT NOT NULL DEFAULT 0,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY `idx_dept` (`department_id`),
+            KEY `idx_role` (`role`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        // Ensure missing columns on existing tables
+        $colCheck = function(string $col, string $def) use ($db) {
+            try {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = :col");
+                $stmt->execute([':col' => $col]);
+                if ((int)$stmt->fetchColumn() === 0) {
+                    $db->exec("ALTER TABLE `users` ADD COLUMN `{$col}` {$def}");
+                }
+            } catch (Throwable $e) {}
+        };
+        $colCheck('personal_email', 'VARCHAR(150) NULL');
+        $colCheck('is_temp_password', 'TINYINT(1) NOT NULL DEFAULT 0');
+        $colCheck('temp_password_expires_at', 'VARCHAR(50) NULL');
+        $colCheck('must_change_password', 'TINYINT(1) NOT NULL DEFAULT 0');
+
+        // Auto-seed default administrator accounts if users table is empty
+        $countStmt = $db->query("SELECT COUNT(*) FROM `users`");
+        if ($countStmt && (int)$countStmt->fetchColumn() === 0) {
+            $seedHash = password_hash('Password123!', PASSWORD_BCRYPT);
+            $ins = $db->prepare("INSERT INTO `users` (`id`, `name`, `email`, `personal_email`, `password`, `role`, `role_title`, `department_id`, `avatar`, `active`, `is_suspended`, `workload_count`) VALUES 
+            ('usr-admin-01', 'Alex Rivera', 'admin@uicms.local', 'alex.rivera@personal.com', :h, 'super_admin', 'Executive Creative Director & Super Admin', 'marketing', '', 1, 0, 0),
+            ('usr-mgr-01', 'Sarah Chen', 'sarah.chen@uicms.local', 'sarah.chen@personal.com', :h, 'department_manager', 'Creative Operations Manager', 'marketing', '', 1, 0, 0),
+            ('usr-des-01', 'Marcus Vance', 'marcus.vance@uicms.local', 'marcus.vance@personal.com', :h, 'designer', 'Senior Visual Designer', 'marketing', '', 1, 0, 0)");
+            $ins->execute([':h' => $seedHash]);
+        }
+    } catch (Throwable $e) {
+        // Proceed gracefully if permissions restrict schema introspection
+    }
+}
+
 if ($method === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -99,9 +155,16 @@ if ($action === 'login') {
     }
 
     // Query user by work email or personal recovery email
-    $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email OR LOWER(personal_email) = :email LIMIT 1');
-    $stmt->execute([':email' => $email]);
-    $userRow = $stmt->fetch();
+    $userRow = null;
+    try {
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email OR LOWER(personal_email) = :email LIMIT 1');
+        $stmt->execute([':email' => $email]);
+        $userRow = $stmt->fetch();
+    } catch (Throwable $e) {
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email LIMIT 1');
+        $stmt->execute([':email' => $email]);
+        $userRow = $stmt->fetch();
+    }
 
     if (!$userRow) {
         sendAuthResponse(401, [
@@ -136,14 +199,38 @@ if ($action === 'login') {
         }
     }
 
-    // Verify Password: supports PHP password_verify (BCrypt), PBKDF2/SHA256, and initial plaintext
+    // Verify Password: supports PHP password_verify (BCrypt), MD5, SHA1, SHA256 (phpMyAdmin functions), PBKDF2, and initial plaintext
     $storedPass = (string)($userRow['password'] ?? '');
     $passwordValid = false;
 
     if (password_verify($password, $storedPass)) {
         $passwordValid = true;
     } elseif ($storedPass === $password) {
-        // Plaintext match (e.g. initial setup) -> auto-upgrade to BCrypt in database
+        // Plaintext match -> auto-upgrade to BCrypt in database
+        $passwordValid = true;
+        try {
+            $upgradedHash = password_hash($password, PASSWORD_BCRYPT);
+            $upStmt = $db->prepare('UPDATE users SET password = :p WHERE id = :id');
+            $upStmt->execute([':p' => $upgradedHash, ':id' => $userRow['id']]);
+        } catch (Throwable $e) {}
+    } elseif (strcasecmp($storedPass, md5($password)) === 0) {
+        // phpMyAdmin MD5 function match -> auto-upgrade to BCrypt
+        $passwordValid = true;
+        try {
+            $upgradedHash = password_hash($password, PASSWORD_BCRYPT);
+            $upStmt = $db->prepare('UPDATE users SET password = :p WHERE id = :id');
+            $upStmt->execute([':p' => $upgradedHash, ':id' => $userRow['id']]);
+        } catch (Throwable $e) {}
+    } elseif (strcasecmp($storedPass, sha1($password)) === 0) {
+        // phpMyAdmin SHA1 match -> auto-upgrade to BCrypt
+        $passwordValid = true;
+        try {
+            $upgradedHash = password_hash($password, PASSWORD_BCRYPT);
+            $upStmt = $db->prepare('UPDATE users SET password = :p WHERE id = :id');
+            $upStmt->execute([':p' => $upgradedHash, ':id' => $userRow['id']]);
+        } catch (Throwable $e) {}
+    } elseif (strcasecmp($storedPass, hash('sha256', $password)) === 0) {
+        // phpMyAdmin SHA256 match -> auto-upgrade to BCrypt
         $passwordValid = true;
         try {
             $upgradedHash = password_hash($password, PASSWORD_BCRYPT);
@@ -291,9 +378,16 @@ if ($action === 'request-password-reset') {
         ]);
     }
 
-    $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email OR LOWER(personal_email) = :email LIMIT 1');
-    $stmt->execute([':email' => $email]);
-    $user = $stmt->fetch();
+    $user = null;
+    try {
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email OR LOWER(personal_email) = :email LIMIT 1');
+        $stmt->execute([':email' => $email]);
+        $user = $stmt->fetch();
+    } catch (Throwable $e) {
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email LIMIT 1');
+        $stmt->execute([':email' => $email]);
+        $user = $stmt->fetch();
+    }
 
     if (!$user) {
         // Return generic success to avoid user enumeration
@@ -345,9 +439,16 @@ if ($action === 'reset-password') {
         ]);
     }
 
-    $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email OR LOWER(personal_email) = :email LIMIT 1');
-    $stmt->execute([':email' => $email]);
-    $user = $stmt->fetch();
+    $user = null;
+    try {
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email OR LOWER(personal_email) = :email LIMIT 1');
+        $stmt->execute([':email' => $email]);
+        $user = $stmt->fetch();
+    } catch (Throwable $e) {
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = :email LIMIT 1');
+        $stmt->execute([':email' => $email]);
+        $user = $stmt->fetch();
+    }
 
     if (!$user) {
         sendAuthResponse(404, [

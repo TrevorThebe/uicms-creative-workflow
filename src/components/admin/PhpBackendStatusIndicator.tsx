@@ -43,33 +43,27 @@ export const PhpBackendStatusIndicator: React.FC = () => {
       clearTimeout(timeoutId);
       const latencyMs = Math.round(performance.now() - startTime);
 
-      if (!response.ok) {
-        setStatus('disconnected');
-        setLatency(null);
-        setErrorMessage(`HTTP Server Error (${response.status} ${response.statusText || 'Bad Response'})`);
-        setLastChecked(new Date());
-        return;
-      }
-
       const payload = await response.json().catch(() => null);
+
       if (!response.ok || payload?.status !== 'online' || payload?.database_connected !== true) {
         setStatus('disconnected');
         setLatency(null);
-        setErrorMessage(payload?.message || 'PHP Backend API returned unsuccessful payload status.');
+        setErrorMessage(payload?.message || `HTTP Server Error (${response.status} ${response.statusText || 'Bad Response'})`);
         setLastChecked(new Date());
         setBackendInfo(null);
-      } else {
-        setStatus('connected');
-        setLatency(latencyMs);
-        setErrorMessage(null);
-        setLastChecked(new Date());
-        setCheckCount((prev) => prev + 1);
-        setBackendInfo({
-          phpVersion: payload.php_version,
-          environment: payload.environment,
-          databaseConnected: payload.database_connected,
-        });
+        return;
       }
+
+      setStatus('connected');
+      setLatency(latencyMs);
+      setErrorMessage(null);
+      setLastChecked(new Date());
+      setCheckCount((prev) => prev + 1);
+      setBackendInfo({
+        phpVersion: payload.php_version,
+        environment: payload.environment,
+        databaseConnected: payload.database_connected,
+      });
     } catch (err: any) {
       const elapsed = Math.round(performance.now() - startTime);
       setStatus('disconnected');

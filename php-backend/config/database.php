@@ -13,7 +13,33 @@ class Database {
     private ?PDO $conn = null;
 
     public function __construct() {
-        // Load from environment variables (AWS ECS / Elastic Beanstalk / Docker / .env)
+        // Automatically check and load .env file if available
+        $envPaths = [
+            __DIR__ . '/../../.env',
+            __DIR__ . '/../.env',
+            __DIR__ . '/.env'
+        ];
+        foreach ($envPaths as $envFile) {
+            if (file_exists($envFile) && is_readable($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim(trim($v), '"\'');
+                        if (!getenv($k)) {
+                            putenv("{$k}={$v}");
+                            $_ENV[$k] = $v;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        // Load from environment variables (AWS ECS / Elastic Beanstalk / Docker / XAMPP / .env)
         $this->host = getenv('DB_HOST') ?: '127.0.0.1';
         $this->db_name = getenv('DB_NAME') ?: 'uicms_workflow';
         $this->username = getenv('DB_USER') ?: 'root';
@@ -34,12 +60,15 @@ class Database {
             $this->conn = new PDO($dsn, $this->username, $this->password, $options);
         } catch (PDOException $e) {
             http_response_code(500);
-            $debugMode = getenv('APP_DEBUG') === 'true';
-            $msg = $debugMode ? "Database Connection Error: " . $e->getMessage() : "Database connection unavailable. Please check system configuration.";
+            $msg = "Database connection error to '{$this->db_name}' on {$this->host}:{$this->port} (user: {$this->username}): " . $e->getMessage();
             echo json_encode([
                 "status" => "error",
-                "message" => $msg
-            ]);
+                "message" => $msg,
+                "database_name" => $this->db_name,
+                "host" => $this->host,
+                "port" => $this->port,
+                "user" => $this->username
+            ], JSON_UNESCAPED_SLASHES);
             exit;
         }
 
