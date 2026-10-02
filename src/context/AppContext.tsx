@@ -99,7 +99,17 @@ const DB_DATA_ENDPOINTS = [
 ];
 const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
 const SESSION_STORAGE_KEY = 'uicms_auth_session_v1';
+const SESSION_TIMEOUT_NOTICE_KEY = 'uicms_auth_timeout_notice_v1';
 const INACTIVITY_TIMEOUT_MS = 60 * 1000; // 1 Minute Inactivity Auto-Logout Timeout
+
+const persistSessionActivity = (lastActivityAt: number): void => {
+  try {
+    const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!rawSession) return;
+    const session = JSON.parse(rawSession);
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...session, lastActivityAt }));
+  } catch {}
+};
 
 const asBoolean = (value: unknown): boolean => value === true || value === 1 || value === '1';
 
@@ -592,6 +602,7 @@ interface AppContextType {
   resetAllDataToDemo: () => void;
 
   // Authentication, Session & Inactivity Timeout
+  databaseReady: boolean;
   isAuthenticated: boolean;
   sessionRemainingSeconds: number;
   inactivityNotice: string | null;
@@ -671,7 +682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   // Auth, Profile Modal & Session Inactivity States
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot_password'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
@@ -684,6 +695,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetInactivityTimer = React.useCallback(() => {
     lastActivityRef.current = Date.now();
     setSessionRemainingSeconds(60);
+    persistSessionActivity(lastActivityRef.current);
   }, []);
 
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
@@ -700,6 +712,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const hydrateFromDatabase = async () => {
       const nextState = await fetchDatabaseState();
       if (!nextState) {
+        setIsAuthenticated(false);
+        setIsAuthModalOpen(true);
+        setAuthModalMode('login');
+        const timeoutNotice = localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
+        if (timeoutNotice) setInactivityNotice(timeoutNotice);
         setDatabaseReady(true);
         return;
       }
@@ -743,6 +760,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Restore stored user session if valid
       let sessionRestored = false;
+      let sessionExpired = false;
       try {
         const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
         if (rawSession) {
@@ -750,31 +768,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (parsed && parsed.userId) {
             const matched = nextState.users.find((u) => u.id === parsed.userId);
             if (matched && matched.active && !matched.isSuspended) {
-              setCurrentUser(matched);
-              setIsAuthenticated(true);
-              sessionRestored = true;
+              const lastActivityAt = Number.isFinite(parsed.lastActivityAt)
+                ? Number(parsed.lastActivityAt)
+                : Date.now();
+              const elapsed = Date.now() - lastActivityAt;
+              if (elapsed < INACTIVITY_TIMEOUT_MS) {
+                setCurrentUser(matched);
+                lastActivityRef.current = lastActivityAt;
+                setSessionRemainingSeconds(Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - elapsed) / 1000)));
+                setIsAuthenticated(true);
+                sessionRestored = true;
+              } else {
+                sessionExpired = true;
+              }
             }
           }
         }
       } catch {}
 
       if (!sessionRestored) {
-        if (nextState.users.length > 0 && nextState.users[0]) {
-          setCurrentUser(nextState.users[0]);
-          localStorage.setItem(
-            SESSION_STORAGE_KEY,
-            JSON.stringify({
-              userId: nextState.users[0].id,
-              email: nextState.users[0].email,
-              loggedInAt: new Date().toISOString(),
-            })
-          );
-          setIsAuthenticated(true);
-        } else {
-          setCurrentUser(EMPTY_USER);
-          setIsAuthenticated(false);
-          setIsAuthModalOpen(true);
-          setAuthModalMode('login');
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        setCurrentUser(EMPTY_USER);
+        setIsAuthenticated(false);
+        setIsAuthModalOpen(true);
+        setAuthModalMode('login');
+        const timeoutNotice = sessionExpired
+          ? 'Your session timed out after 1 minute of inactivity. Please sign in to resume your workspace session.'
+          : localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
+        if (timeoutNotice) {
+          setInactivityNotice(timeoutNotice);
+          localStorage.setItem(SESSION_TIMEOUT_NOTICE_KEY, timeoutNotice);
         }
       }
 
@@ -788,16 +811,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    lastActivityRef.current = Date.now();
-    setSessionRemainingSeconds(60);
-
     let lastThrottle = Date.now();
+    let lastPersistedActivityAt = 0;
     const handleUserActivity = () => {
       const now = Date.now();
       if (now - lastThrottle > 300) {
         lastThrottle = now;
         lastActivityRef.current = now;
         setSessionRemainingSeconds(60);
+      }
+      if (now - lastPersistedActivityAt >= 1000) {
+        persistSessionActivity(now);
+        lastPersistedActivityAt = now;
       }
     };
 
@@ -836,6 +861,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (elapsed >= INACTIVITY_TIMEOUT_MS) {
         localStorage.removeItem(SESSION_STORAGE_KEY);
+        localStorage.setItem(
+          SESSION_TIMEOUT_NOTICE_KEY,
+          'Your session timed out after 1 minute of inactivity. Please sign in to resume your workspace session.'
+        );
         setIsAuthenticated(false);
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
@@ -2296,8 +2325,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userId: newUser.id,
         email: newUser.email,
         loggedInAt: new Date().toISOString(),
+        lastActivityAt: Date.now(),
       })
     );
+    localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     lastActivityRef.current = Date.now();
     setSessionRemainingSeconds(60);
 
@@ -2377,8 +2408,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userId: user.id,
         email: user.email,
         loggedInAt: new Date().toISOString(),
+        lastActivityAt: Date.now(),
       })
     );
+    localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     lastActivityRef.current = Date.now();
     setSessionRemainingSeconds(60);
 
@@ -2582,6 +2615,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logoutUser = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
+    setInactivityNotice(null);
     setIsAuthenticated(false);
     setIsAuthModalOpen(true);
     setAuthModalMode('login');
@@ -2847,6 +2882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userId: user.id,
           email: user.email,
           loggedInAt: new Date().toISOString(),
+          lastActivityAt: Date.now(),
         })
       );
     }
@@ -2857,6 +2893,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        databaseReady,
         currentUser,
         users,
         sessionRemainingSeconds,
