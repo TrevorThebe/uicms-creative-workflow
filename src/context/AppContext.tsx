@@ -24,40 +24,11 @@ import {
   WorkflowStage,
 } from '../types';
 import { calculateBriefCompleteness } from '../data/briefSchemas';
-import { hashPasswordSync, verifyPassword, isPasswordHashed } from '../utils/security';
 import {
   getAllStoredFileDataUrls,
   deleteLocalFileBlob,
 } from '../utils/localFileStore';
-import {
-  INITIAL_ACTIVITY_LOGS,
-  INITIAL_ADMIN_CONFIG,
-  INITIAL_APPROVALS,
-  INITIAL_CHAT_MESSAGES,
-  INITIAL_CLIENTS,
-  INITIAL_FEEDBACK,
-  INITIAL_FILES,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_PROJECTS,
-  INITIAL_QA_SUBMISSIONS,
-  INITIAL_TASKS,
-  INITIAL_USERS,
-  INITIAL_VERSIONS,
-} from '../data/initialData';
-
-const EMPTY_USER: User = {
-  id: 'usr-admin',
-  name: 'Eleanor Vance',
-  email: 'eleanor.vance@uicms.com',
-  personalEmail: 'eleanor.vance@gmail.com',
-  password: 'Password123!',
-  role: 'super_admin',
-  roleTitle: 'Chief Operations & Systems Administrator',
-  departmentId: 'marketing',
-  avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-  active: true,
-  workloadCount: 4,
-};
+const EMPTY_USER = {} as User;
 
 const EMPTY_ADMIN_CONFIG: AdminConfig = {
   appName: 'UICMS Creative Workflow',
@@ -97,10 +68,12 @@ const EMPTY_ADMIN_CONFIG: AdminConfig = {
 const DB_DATA_ENDPOINTS = [
   '/php-backend/api/data.php',
 ];
+const AUTH_ENDPOINT = '/php-backend/api/auth.php';
 const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
 const SESSION_STORAGE_KEY = 'uicms_auth_session_v1';
 const SESSION_TIMEOUT_NOTICE_KEY = 'uicms_auth_timeout_notice_v1';
-const INACTIVITY_TIMEOUT_MS = 60 * 1000; // 1 Minute Inactivity Auto-Logout Timeout
+const INACTIVITY_TIMEOUT_SECONDS = 5 * 60;
+const INACTIVITY_TIMEOUT_MS = INACTIVITY_TIMEOUT_SECONDS * 1000;
 
 const persistSessionActivity = (lastActivityAt: number): void => {
   try {
@@ -109,6 +82,25 @@ const persistSessionActivity = (lastActivityAt: number): void => {
     const session = JSON.parse(rawSession);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...session, lastActivityAt }));
   } catch {}
+};
+
+const postAuthAction = async (action: string, payload: Record<string, unknown> = {}) => {
+  try {
+    const response = await fetch(`${AUTH_ENDPOINT}?action=${encodeURIComponent(action)}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, action }),
+    });
+    const result = await response.json().catch(() => null);
+    return {
+      success: response.ok && result?.status === 'success',
+      error: result?.message || 'Authentication service unavailable.',
+      ...result,
+    };
+  } catch {
+    return { success: false, error: 'Could not connect to the authentication service.' };
+  }
 };
 
 const asBoolean = (value: unknown): boolean => value === true || value === 1 || value === '1';
@@ -150,7 +142,6 @@ const normalizeUsers = (data: any[] = []): User[] =>
     id: user.id || '',
     name: user.name || 'Unknown User',
     email: user.email || '',
-    password: user.password || '',
     role: (user.role || 'designer') as UserRole,
     roleTitle: user.role_title || user.roleTitle || user.role || 'Team Member',
     departmentId: (user.department_id || user.departmentId || 'marketing') as DepartmentId,
@@ -419,23 +410,9 @@ const mergeMissingRecords = (databaseRows: any[], localRows: any[]): any[] => {
 };
 
 const fetchDatabaseState = async () => {
-  const sessionRaw = typeof window !== 'undefined' ? sessionStorage.getItem(SESSION_STORAGE_KEY) : null;
-  let sessionUser: any = null;
-  if (sessionRaw) {
-    try {
-      sessionUser = JSON.parse(sessionRaw);
-    } catch {}
-  }
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (sessionUser?.role) {
-    headers['X-User-Role'] = sessionUser.role;
-    headers['X-User-Id'] = sessionUser.id;
-    if (sessionUser.departmentId) headers['X-Department-Id'] = sessionUser.departmentId;
-  }
-
   for (const endpoint of DB_DATA_ENDPOINTS) {
     try {
-      const response = await fetch(endpoint, { headers });
+      const response = await fetch(endpoint, { credentials: 'include', headers: { Accept: 'application/json' } });
       if (!response.ok) continue;
 
       const contentType = response.headers.get('content-type') || '';
@@ -480,8 +457,7 @@ const fetchDatabaseState = async () => {
         adminConfig: normalizeAdminConfig(dataset.admin_settings ?? dataset.adminSettings ?? dataset.adminConfig ?? EMPTY_ADMIN_CONFIG),
       };
 
-      // Preserve an intentionally empty database as empty. Do not auto-reseed
-      // demo records when the backend reports that all collections are empty.
+      // Preserve empty collections when the backend contains no records.
       return nextState;
     } catch {
       // Ignore unreachable endpoints and try the next candidate.
@@ -492,20 +468,20 @@ const fetchDatabaseState = async () => {
 };
 
 const EMPTY_STATE = () => ({
-  users: INITIAL_USERS,
-  currentUser: INITIAL_USERS[0] || EMPTY_USER,
-  projects: INITIAL_PROJECTS,
-  tasks: INITIAL_TASKS,
-  files: INITIAL_FILES,
-  versions: INITIAL_VERSIONS,
-  qaSubmissions: INITIAL_QA_SUBMISSIONS,
-  approvals: INITIAL_APPROVALS,
-  feedbackItems: INITIAL_FEEDBACK,
-  notifications: INITIAL_NOTIFICATIONS,
-  chatMessages: INITIAL_CHAT_MESSAGES,
-  activityLogs: INITIAL_ACTIVITY_LOGS,
-  clients: INITIAL_CLIENTS,
-  adminConfig: INITIAL_ADMIN_CONFIG,
+  users: [],
+  currentUser: EMPTY_USER,
+  projects: [],
+  tasks: [],
+  files: [],
+  versions: [],
+  qaSubmissions: [],
+  approvals: [],
+  feedbackItems: [],
+  notifications: [],
+  chatMessages: [],
+  activityLogs: [],
+  clients: [],
+  adminConfig: EMPTY_ADMIN_CONFIG,
 });
 
 interface AppContextType {
@@ -532,7 +508,6 @@ interface AppContextType {
   themeMode: ThemeMode;
 
   // Actions
-  setCurrentUser: (user: User) => void;
   setSelectedProjectId: (id: string | null) => void;
   setActiveProjectTab: (tab: string) => void;
   setIsSearchOpen: (open: boolean) => void;
@@ -599,7 +574,6 @@ interface AppContextType {
   updateAdminConfig: (updates: Partial<AdminConfig>) => void;
   updateClient: (client: ClientRecord) => void;
   addClient: (client: ClientRecord) => void;
-  resetAllDataToDemo: () => void;
 
   // Authentication, Session & Inactivity Timeout
   databaseReady: boolean;
@@ -608,7 +582,6 @@ interface AppContextType {
   inactivityNotice: string | null;
   setInactivityNotice: (notice: string | null) => void;
   resetInactivityTimer: () => void;
-  encryptAllUserPasswords: () => { success: boolean; count: number };
   isAuthModalOpen: boolean;
   authModalMode: 'login' | 'register' | 'forgot_password';
   isProfileModalOpen: boolean;
@@ -623,20 +596,17 @@ interface AppContextType {
     roleTitle?: string;
     departmentId: DepartmentId;
     avatar?: string;
-  }) => { success: boolean; error?: string; user?: User };
-  loginUser: (email: string, password: string) => { success: boolean; error?: string; user?: User };
+  }) => Promise<{ success: boolean; error?: string; user?: User }>;
+  loginUser: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   forgotPassword: (
     emailOrPersonal: string,
     personalEmailOverride?: string
-  ) => {
+  ) => Promise<{
     success: boolean;
     error?: string;
-    resetToken?: string;
-    tempPassword?: string;
-    sentToEmail?: string;
-    user?: User;
-  };
-  resetPassword: (email: string, resetToken: string, newPassword: string) => { success: boolean; error?: string };
+    message?: string;
+  }>;
+  resetPassword: (email: string, resetToken: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   resetUserEmail: (
     userId: string,
     newWorkEmail: string,
@@ -646,7 +616,7 @@ interface AppContextType {
   suspendUser: (userId: string, reason: string) => { success: boolean; error?: string };
   reactivateUser: (userId: string) => { success: boolean; error?: string };
   deleteUser: (userId: string, reassignToUserId?: string) => { success: boolean; error?: string };
-  updateUserPassword: (userId: string, oldPassword: string, newPassword: string) => { success: boolean; error?: string };
+  updateUserPassword: (userId: string, oldPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (
     userId: string,
     updates: Partial<Pick<User, 'name' | 'email' | 'personalEmail' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
@@ -658,6 +628,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const emptyState = EMPTY_STATE();
   const [databaseReady, setDatabaseReady] = useState(false);
+  const [applicationStateLoaded, setApplicationStateLoaded] = useState(false);
 
   const [users, setUsers] = useState<User[]>(emptyState.users);
   const [currentUser, setCurrentUser] = useState<User>(emptyState.currentUser);
@@ -688,13 +659,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   // Inactivity Auto-Logout Timer State
-  const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number>(60);
+  const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number>(INACTIVITY_TIMEOUT_SECONDS);
   const [inactivityNotice, setInactivityNotice] = useState<string | null>(null);
   const lastActivityRef = React.useRef<number>(Date.now());
 
   const resetInactivityTimer = React.useCallback(() => {
     lastActivityRef.current = Date.now();
-    setSessionRemainingSeconds(60);
+    setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
     persistSessionActivity(lastActivityRef.current);
   }, []);
 
@@ -708,15 +679,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return 'dark';
   });
 
+  const applyDatabaseState = (state: any) => {
+    if (!state) return;
+    setUsers(state.users);
+    setProjects(state.projects);
+    setTasks(state.tasks);
+    setFiles(state.files);
+    setVersions(state.versions);
+    setQaSubmissions(state.qaSubmissions);
+    setApprovals(state.approvals);
+    setFeedbackItems(state.feedbackItems);
+    setNotifications(state.notifications);
+    setChatMessages(state.chatMessages);
+    setActivityLogs(state.activityLogs);
+    setClients(state.clients);
+    setAdminConfig(state.adminConfig);
+    setApplicationStateLoaded(true);
+    setDatabaseReady(true);
+  };
+
   useEffect(() => {
     const hydrateFromDatabase = async () => {
-      const nextState = await fetchDatabaseState();
-      if (!nextState) {
+      let sessionPayload: any = null;
+      try {
+        const response = await fetch(`${AUTH_ENDPOINT}?action=session`, { credentials: 'include', headers: { Accept: 'application/json' } });
+        sessionPayload = await response.json().catch(() => null);
+        if (!response.ok || sessionPayload?.status !== 'success') sessionPayload = null;
+      } catch {}
+
+      if (!sessionPayload?.user) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        setCurrentUser(EMPTY_USER);
         setIsAuthenticated(false);
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
         const timeoutNotice = localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
         if (timeoutNotice) setInactivityNotice(timeoutNotice);
+        setDatabaseReady(true);
+        return;
+      }
+
+      setCurrentUser(sessionPayload.user);
+      setIsAuthenticated(true);
+      setIsAuthModalOpen(false);
+      lastActivityRef.current = Date.now();
+      setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
+      const nextState = await fetchDatabaseState();
+      if (!nextState) {
         setDatabaseReady(true);
         return;
       }
@@ -758,49 +767,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setClients(nextState.clients);
       setAdminConfig(nextState.adminConfig);
 
-      // Restore stored user session if valid
-      let sessionRestored = false;
-      let sessionExpired = false;
-      try {
-        const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
-        if (rawSession) {
-          const parsed = JSON.parse(rawSession);
-          if (parsed && parsed.userId) {
-            const matched = nextState.users.find((u) => u.id === parsed.userId);
-            if (matched && matched.active && !matched.isSuspended) {
-              const lastActivityAt = Number.isFinite(parsed.lastActivityAt)
-                ? Number(parsed.lastActivityAt)
-                : Date.now();
-              const elapsed = Date.now() - lastActivityAt;
-              if (elapsed < INACTIVITY_TIMEOUT_MS) {
-                setCurrentUser(matched);
-                lastActivityRef.current = lastActivityAt;
-                setSessionRemainingSeconds(Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - elapsed) / 1000)));
-                setIsAuthenticated(true);
-                sessionRestored = true;
-              } else {
-                sessionExpired = true;
-              }
-            }
-          }
-        }
-      } catch {}
-
-      if (!sessionRestored) {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-        setCurrentUser(EMPTY_USER);
-        setIsAuthenticated(false);
-        setIsAuthModalOpen(true);
-        setAuthModalMode('login');
-        const timeoutNotice = sessionExpired
-          ? 'Your session timed out after 1 minute of inactivity. Please sign in to resume your workspace session.'
-          : localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
-        if (timeoutNotice) {
-          setInactivityNotice(timeoutNotice);
-          localStorage.setItem(SESSION_TIMEOUT_NOTICE_KEY, timeoutNotice);
-        }
-      }
-
+      setApplicationStateLoaded(true);
       setDatabaseReady(true);
     };
 
@@ -813,16 +780,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let lastThrottle = Date.now();
     let lastPersistedActivityAt = 0;
+    let lastServerActivityAt = Date.now();
     const handleUserActivity = () => {
       const now = Date.now();
       if (now - lastThrottle > 300) {
         lastThrottle = now;
         lastActivityRef.current = now;
-        setSessionRemainingSeconds(60);
+        setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
       }
       if (now - lastPersistedActivityAt >= 1000) {
         persistSessionActivity(now);
         lastPersistedActivityAt = now;
+      }
+      if (now - lastServerActivityAt >= 60000) {
+        lastServerActivityAt = now;
+        fetch(`${AUTH_ENDPOINT}?action=session`, { credentials: 'include', headers: { Accept: 'application/json' } })
+          .then((response) => {
+            if (response.ok) return;
+            localStorage.removeItem(SESSION_STORAGE_KEY);
+            setInactivityNotice('Your server session expired. Please sign in again.');
+            setIsAuthenticated(false);
+            setIsAuthModalOpen(true);
+            setAuthModalMode('login');
+          })
+          .catch(() => {});
       }
     };
 
@@ -848,7 +829,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [isAuthenticated]);
 
-  // 1-minute inactivity timeout interval check
+  // 5-minute inactivity timeout interval check
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -860,16 +841,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSessionRemainingSeconds(remaining);
 
       if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        void postAuthAction('logout');
         localStorage.removeItem(SESSION_STORAGE_KEY);
         localStorage.setItem(
           SESSION_TIMEOUT_NOTICE_KEY,
-          'Your session timed out after 1 minute of inactivity. Please sign in to resume your workspace session.'
+          'Your session timed out after 5 minutes of inactivity. Please sign in to resume your workspace session.'
         );
         setIsAuthenticated(false);
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
         setInactivityNotice(
-          'Your session timed out after 1 minute of inactivity. Please sign in to resume your workspace session.'
+          'Your session timed out after 5 minutes of inactivity. Please sign in to resume your workspace session.'
         );
 
         setActivityLogs((prev) => [
@@ -879,7 +861,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             userId: currentUser.id,
             userName: currentUser.name,
             action: 'SESSION_TIMEOUT',
-            description: `Session expired: ${currentUser.name} was automatically logged out due to 1 minute of inactivity.`,
+            description: `Session expired: ${currentUser.name} was automatically logged out due to 5 minutes of inactivity.`,
             timestamp: new Date().toISOString(),
           },
           ...prev,
@@ -891,7 +873,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAuthenticated, currentUser]);
 
   useEffect(() => {
-    if (!databaseReady) return;
+    if (!databaseReady || !isAuthenticated || !applicationStateLoaded) return;
 
     const timeout = window.setTimeout(async () => {
       const data = {
@@ -913,6 +895,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const response = await fetch(DB_DATA_ENDPOINTS[0], {
           method: 'POST',
+          credentials: 'include',
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
@@ -932,6 +915,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => window.clearTimeout(timeout);
   }, [
     databaseReady,
+    isAuthenticated,
+    applicationStateLoaded,
     users,
     clients,
     projects,
@@ -980,11 +965,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const safeLogs = (data.activityLogs || []).slice(0, maxLogs);
       const safeChats = (data.chatMessages || []).slice(0, maxChats);
       const safeNotifs = (data.notifications || []).slice(0, maxNotifs);
+      const safeUsers = (data.users || []).map((user: User) => {
+        const { password: _password, ...safeUser } = user;
+        return safeUser;
+      });
+      const { password: _currentPassword, ...safeCurrentUser } = data.currentUser || {};
 
       // Clean large data URLs in file repository
       const safeFiles = (data.files || []).map((f: any) => {
         if (f.url && f.url.startsWith('data:') && f.url.length > 50000) {
-          return { ...f, url: `https://files.uicms.com/assets/${encodeURIComponent(f.filename)}` };
+          return { ...f, url: '' };
         }
         return f;
       });
@@ -993,15 +983,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const safeVersions = (data.versions || []).map((v: any) => {
         const assets = (v.assets || []).map((a: any) => {
           if (a.url && a.url.startsWith('data:') && a.url.length > 50000) {
-            return { ...a, url: `https://files.uicms.com/versions/${encodeURIComponent(a.filename || 'asset')}` };
+            return { ...a, url: '' };
           }
           return a;
         });
-        return { ...v, assets };
+        return { ...v, fileUrl: v.fileUrl?.startsWith('data:') ? '' : v.fileUrl, assets };
       });
 
       return {
         ...data,
+        users: safeUsers,
+        currentUser: safeCurrentUser,
         activityLogs: safeLogs,
         chatMessages: safeChats,
         notifications: safeNotifs,
@@ -1108,9 +1100,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       online_ram: 'RAM',
       development: 'DEV',
     };
-    const deptCode = deptCodeMap[projectData.departmentId || 'marketing'] || 'PRJ';
-    const nextNum = projects.length + 101;
-    const generatedId = `PRJ-${deptCode}-2026-${String(nextNum).padStart(3, '0')}`;
+    const departmentId = projectData.departmentId || currentUser.departmentId;
+    const deptCode = deptCodeMap[departmentId] || 'PRJ';
+    const nextNum = Math.max(0, ...projects.map((project) => Number(project.projectNumber) || 0)) + 1;
+    const generatedId = `PRJ-${deptCode}-${new Date().getFullYear()}-${crypto.randomUUID()}`;
 
     const briefCompletenessReport = calculateBriefCompleteness(
       projectData.requestTypeId || '',
@@ -1120,11 +1113,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newProject: Project = {
       id: generatedId,
       projectNumber: nextNum,
-      clientId: projectData.clientId || 'cl-discovery',
-      departmentId: projectData.departmentId || 'marketing',
-      requestTypeId: projectData.requestTypeId || 'mkt-social-instagram',
-      projectName: projectData.projectName || 'New Creative Request',
-      campaignName: projectData.campaignName || 'General Campaign 2026',
+      clientId: projectData.clientId || clients[0]?.id || '',
+      departmentId,
+      requestTypeId: projectData.requestTypeId || '',
+      projectName: projectData.projectName || '',
+      campaignName: projectData.campaignName || projectData.projectName || '',
       description: projectData.description || '',
       priority: projectData.priority || 'medium',
       stage: 'BRIEF_VALIDATION',
@@ -1132,8 +1125,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       version: 'V0.1',
       accountableUserId: projectData.accountableUserId || currentUser.id,
       projectOwnerId: projectData.projectOwnerId || currentUser.id,
-      qaOwnerId: projectData.qaOwnerId || 'usr-qa-1',
-      approverId: projectData.approverId || 'usr-client-1',
+      qaOwnerId: projectData.qaOwnerId || users.find((user) => user.role === 'qa_user')?.id || '',
+      approverId: projectData.approverId || users.find((user) => user.role === 'client')?.id || '',
       contributorIds: projectData.contributorIds || [currentUser.id],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1971,32 +1964,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClients((prev) => [...prev, client]);
   };
 
-  const resetAllDataToDemo = () => {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-    const empty = EMPTY_STATE();
-    setUsers(empty.users);
-    setCurrentUser(empty.currentUser);
-    setIsAuthenticated(false);
-    setProjects(empty.projects);
-    setTasks(empty.tasks);
-    setFiles(empty.files);
-    setVersions(empty.versions);
-    setQaSubmissions(empty.qaSubmissions);
-    setApprovals(empty.approvals);
-    setFeedbackItems(empty.feedbackItems);
-    setNotifications(empty.notifications);
-    setChatMessages(empty.chatMessages);
-    setActivityLogs(empty.activityLogs);
-    setClients(empty.clients);
-    setAdminConfig(empty.adminConfig);
-  };
-
   const exportDatabaseJson = (): string => {
     const payload: DatabaseBackupPayload = {
       version: '2026.1',
       exportedAt: new Date().toISOString(),
       exportedBy: `${currentUser.name} (${currentUser.role})`,
-      users,
+      users: users.map((user) => {
+        const { password: _password, ...safeUser } = user;
+        return safeUser;
+      }),
       projects,
       tasks,
       files,
@@ -2119,10 +2095,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         incomingProjects = responseData.map((item, idx) => ({
           id: item.id || `PRJ-${Date.now()}-${idx}`,
           projectNumber: item.projectNumber || item.project_number || 100 + idx,
-          clientId: item.clientId || item.client_id || 'cl-discovery',
-          departmentId: item.departmentId || item.department_id || 'marketing',
-          requestTypeId: item.requestTypeId || item.request_type_id || 'mkt-social-instagram',
-          projectName: item.projectName || item.project_name || item.name || `Synced Project ${idx + 1}`,
+          clientId: item.clientId || item.client_id || clients[0]?.id || '',
+          departmentId: item.departmentId || item.department_id || currentUser.departmentId || '',
+          requestTypeId: item.requestTypeId || item.request_type_id || '',
+          projectName: item.projectName || item.project_name || item.name || '',
           campaignName: item.campaignName || item.campaign_name || '',
           description: item.description || '',
           priority: item.priority || 'medium',
@@ -2131,17 +2107,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           version: item.version || 'V1.0',
           accountableUserId: item.accountableUserId || item.accountable_user_id || currentUser.id,
           projectOwnerId: item.projectOwnerId || item.project_owner_id || currentUser.id,
-          qaOwnerId: item.qaOwnerId || item.qa_owner_id || 'usr-qa-1',
+          qaOwnerId: item.qaOwnerId || item.qa_owner_id || users.find((user) => user.role === 'qa_user')?.id || '',
           approverId: item.approverId || item.approver_id || currentUser.id,
           contributorIds: Array.isArray(item.contributorIds) ? item.contributorIds : [],
-          dependencies: typeof item.dependencies === 'string' ? item.dependencies : 'None',
-          risks: typeof item.risks === 'string' ? item.risks : 'Low risk profile',
-          blockers: typeof item.blockers === 'string' ? item.blockers : 'None',
-          externalSuppliers: typeof item.externalSuppliers === 'string' ? item.externalSuppliers : 'Direct in-house',
+          dependencies: typeof item.dependencies === 'string' ? item.dependencies : '',
+          risks: typeof item.risks === 'string' ? item.risks : '',
+          blockers: typeof item.blockers === 'string' ? item.blockers : '',
+          externalSuppliers: typeof item.externalSuppliers === 'string' ? item.externalSuppliers : '',
           nextAction: item.nextAction && typeof item.nextAction === 'object' ? item.nextAction : {
-            task: 'Initial Production Milestone',
+            task: '',
             ownerName: currentUser.name,
-            dueDate: new Date().toISOString().split('T')[0],
+            dueDate: '',
           },
           briefData: item.briefData || item.brief_data || {},
           createdAt: item.createdAt || item.created_at || new Date().toISOString(),
@@ -2277,7 +2253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const registerUser = (userData: {
+  const registerUser = async (userData: {
     name: string;
     email: string;
     password: string;
@@ -2285,221 +2261,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     roleTitle?: string;
     departmentId: DepartmentId;
     avatar?: string;
-  }): { success: boolean; error?: string; user?: User } => {
-    const emailClean = userData.email.trim().toLowerCase();
-    const existing = users.find((u) => u.email.toLowerCase() === emailClean);
-    if (existing) {
-      return {
-        success: false,
-        error: 'An account with this email address already exists. Please log in or reset your password.',
-      };
-    }
-
-    const newUserId = `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const defaultAvatar = userData.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-
-    const newUser: User = {
-      id: newUserId,
-      name: userData.name.trim(),
-      email: emailClean,
-      password: hashPasswordSync(userData.password || 'Password123!'),
-      role: userData.role,
-      roleTitle: userData.roleTitle?.trim() || getRoleTitleDefault(userData.role),
+  }): Promise<{ success: boolean; error?: string; user?: User }> => {
+    const result = await postAuthAction('register', {
+      name: userData.name,
+      email: userData.email,
+      password: userData.password,
+      roleTitle: userData.roleTitle,
       departmentId: userData.departmentId,
-      avatar: defaultAvatar,
-      active: true,
-      isSuspended: false,
-      workloadCount: 0,
-      createdAt: new Date().toISOString(),
-    };
+      avatar: userData.avatar,
+    });
+    if (!result.success || !result.user) return { success: false, error: result.error };
 
-    setUsers((prev) => [...prev, newUser]);
+    const newUser = result.user as User;
     setCurrentUser(newUser);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
     setInactivityNotice(null);
-
-    localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        userId: newUser.id,
-        email: newUser.email,
-        loggedInAt: new Date().toISOString(),
-        lastActivityAt: Date.now(),
-      })
-    );
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ lastActivityAt: Date.now() }));
     localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     lastActivityRef.current = Date.now();
-    setSessionRemainingSeconds(60);
-
-    // Audit log
-    const logId = `log-${Date.now()}`;
-    const newLog: ActivityLog = {
-      id: logId,
-      projectId: 'SYSTEM',
-      userId: newUser.id,
-      userName: newUser.name,
-      action: 'USER_REGISTERED',
-      description: `New account registered: ${newUser.name} (${newUser.email}) as ${newUser.roleTitle}.`,
-      timestamp: new Date().toISOString(),
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-
-    // Welcome notification
-    const notifId = `notif-${Date.now()}`;
-    setNotifications((prev) => [
-      {
-        id: notifId,
-        userId: newUser.id,
-        type: 'account_created',
-        title: 'Welcome to Unified Creative Workflow',
-        message: `Your account has been created with ${newUser.roleTitle} permissions.`,
-        read: false,
-        createdAt: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
+    setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
+    applyDatabaseState(await fetchDatabaseState());
 
     return { success: true, user: newUser };
   };
 
-  const loginUser = (
+  const loginUser = async (
     email: string,
     password: string
-  ): { success: boolean; error?: string; user?: User } => {
-    const emailClean = email.trim().toLowerCase();
-    const user = users.find(
-      (u) =>
-        u.email.toLowerCase() === emailClean ||
-        (u.personalEmail && u.personalEmail.toLowerCase() === emailClean)
-    );
-
-    if (!user) {
-      return { success: false, error: 'No account found with this email address.' };
-    }
-
-    if (user.password) {
-      const isMatch = isPasswordHashed(user.password)
-        ? user.password.startsWith('$2y$') || user.password.startsWith('$2a$') || user.password.startsWith('$2b$')
-          ? true // Accept valid server-verified BCrypt token
-          : hashPasswordSync(password) === user.password || user.password.includes(hashPasswordSync(password).replace('$pbkdf2$sha256$', ''))
-        : user.password === password;
-
-      if (!isMatch) {
-        return { success: false, error: 'Incorrect password. Please verify and try again.' };
-      }
-    }
-
-    if (user.isSuspended || !user.active) {
-      return {
-        success: false,
-        error: `Account suspended: ${user.suspendedReason || 'Administrative suspension'}. Please contact your System Administrator.`,
-      };
-    }
-
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    const result = await postAuthAction('login', { email, password });
+    if (!result.success || !result.user) return { success: false, error: result.error };
+    const user = result.user as User;
     setCurrentUser(user);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
     setInactivityNotice(null);
-
-    localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        userId: user.id,
-        email: user.email,
-        loggedInAt: new Date().toISOString(),
-        lastActivityAt: Date.now(),
-      })
-    );
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ lastActivityAt: Date.now() }));
     localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     lastActivityRef.current = Date.now();
-    setSessionRemainingSeconds(60);
-
-    // Audit log
-    const logId = `log-${Date.now()}`;
-    const newLog: ActivityLog = {
-      id: logId,
-      projectId: 'SYSTEM',
-      userId: user.id,
-      userName: user.name,
-      action: 'USER_LOGIN',
-      description: `${user.name} logged into the system portal${user.isTempPassword ? ' using a temporary password' : ''}.`,
-      timestamp: new Date().toISOString(),
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
+    setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
+    applyDatabaseState(await fetchDatabaseState());
 
     return { success: true, user };
   };
 
-  const forgotPassword = (
+  const forgotPassword = async (
     emailOrPersonal: string,
-    personalEmailOverride?: string
-  ): {
-    success: boolean;
-    error?: string;
-    resetToken?: string;
-    tempPassword?: string;
-    sentToEmail?: string;
-    user?: User;
-  } => {
-    const emailClean = emailOrPersonal.trim().toLowerCase();
-    const user = users.find(
-      (u) =>
-        u.email.toLowerCase() === emailClean ||
-        (u.personalEmail && u.personalEmail.toLowerCase() === emailClean)
-    );
-
-    if (!user) {
-      return { success: false, error: 'No user account found matching that email address.' };
-    }
-
-    // Determine the personal recovery email
-    const recipientPersonalEmail =
-      personalEmailOverride?.trim().toLowerCase() ||
-      user.personalEmail?.trim().toLowerCase() ||
-      `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@gmail.com`;
-
-    // Generate secure temporary password, e.g. Tmp#749281
-    const randomPin = Math.floor(100000 + Math.random() * 900000);
-    const tempPassword = `Tmp#${randomPin}`;
-    const resetToken = `SEC-${randomPin}`;
-    const hashedTemp = hashPasswordSync(tempPassword);
-
-    const updatedUser: User = {
-      ...user,
-      password: hashedTemp,
-      personalEmail: recipientPersonalEmail,
-      isTempPassword: true,
-      mustChangePassword: true,
-      tempPasswordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    };
-
-    setUsers((prev) => prev.map((u) => (u.id === user.id ? updatedUser : u)));
-
-    if (currentUser.id === user.id) {
-      setCurrentUser(updatedUser);
-    }
-
-    // Log temporary password dispatch
-    const logId = `log-${Date.now()}`;
-    const newLog: ActivityLog = {
-      id: logId,
-      projectId: 'SYSTEM',
-      userId: user.id,
-      userName: user.name,
-      action: 'PASSWORD_RESET_REQUESTED',
-      description: `Temporary password dispatched to personal email (${recipientPersonalEmail}) for account ${user.email}.`,
-      timestamp: new Date().toISOString(),
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-
-    return {
-      success: true,
-      resetToken,
-      tempPassword,
-      sentToEmail: recipientPersonalEmail,
-      user: updatedUser,
-    };
+    _personalEmailOverride?: string
+  ): Promise<{ success: boolean; error?: string; message?: string }> => {
+    const result = await postAuthAction('request-password-reset', { email: emailOrPersonal });
+    return { success: result.success, error: result.error, message: result.message };
   };
 
   const resetUserEmail = (
@@ -2571,49 +2383,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, user: updatedUser };
   };
 
-  const resetPassword = (
+  const resetPassword = async (
     email: string,
     resetToken: string,
     newPassword: string
-  ): { success: boolean; error?: string } => {
-    const emailClean = email.trim().toLowerCase();
-    const user = users.find((u) => u.email.toLowerCase() === emailClean);
-
-    if (!user) {
-      return { success: false, error: 'User account not found.' };
-    }
-
-    if (!newPassword || newPassword.length < 6) {
-      return { success: false, error: 'Password must be at least 6 characters long.' };
-    }
-
-    const hashedNew = hashPasswordSync(newPassword);
-
-    setUsers((prev) =>
-      prev.map((u) => (u.id === user.id ? { ...u, password: hashedNew } : u))
-    );
-
-    if (currentUser.id === user.id) {
-      setCurrentUser((prev) => ({ ...prev, password: hashedNew }));
-    }
-
-    // Audit log
-    const logId = `log-${Date.now()}`;
-    const newLog: ActivityLog = {
-      id: logId,
-      projectId: 'SYSTEM',
-      userId: user.id,
-      userName: user.name,
-      action: 'PASSWORD_RESET_SUCCESS',
-      description: `Password was successfully updated for account ${user.email}.`,
-      timestamp: new Date().toISOString(),
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-
-    return { success: true };
+  ): Promise<{ success: boolean; error?: string; message?: string }> => {
+    const result = await postAuthAction('reset-password', { email, token: resetToken, password: newPassword });
+    return { success: result.success, error: result.error };
   };
 
   const logoutUser = () => {
+    void postAuthAction('logout');
     localStorage.removeItem(SESSION_STORAGE_KEY);
     localStorage.removeItem(SESSION_TIMEOUT_NOTICE_KEY);
     setInactivityNotice(null);
@@ -2773,34 +2553,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const updateUserPassword = (
+  const updateUserPassword = async (
     userId: string,
     oldPassword: string,
     newPassword: string
-  ): { success: boolean; error?: string } => {
-    const user = users.find((u) => u.id === userId);
-    if (!user) return { success: false, error: 'User not found.' };
-
-    const isSuperuser = currentUser.role === 'super_admin';
-    if (!isSuperuser && oldPassword && user.password && !isPasswordHashed(user.password) && user.password !== oldPassword) {
-      return { success: false, error: 'Current password does not match.' };
-    }
-
-    if (!newPassword || newPassword.length < 6) {
-      return { success: false, error: 'New password must be at least 6 characters.' };
-    }
-
-    const hashedNew = hashPasswordSync(newPassword);
-
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, password: hashedNew } : u))
-    );
-
-    if (currentUser.id === userId) {
-      setCurrentUser((prev) => ({ ...prev, password: hashedNew }));
-    }
-
-    return { success: true };
+  ): Promise<{ success: boolean; error?: string }> => {
+    const result = await postAuthAction('change-password', { userId, oldPassword, newPassword });
+    return { success: result.success, error: result.error };
   };
 
   const updateUserProfile = (
@@ -2856,39 +2615,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, user: updatedUser };
   };
 
-  const encryptAllUserPasswords = (): { success: boolean; count: number } => {
-    let count = 0;
-    setUsers((prev) =>
-      prev.map((user) => {
-        if (user.password && !isPasswordHashed(user.password)) {
-          count++;
-          return {
-            ...user,
-            password: hashPasswordSync(user.password),
-          };
-        }
-        return user;
-      })
-    );
-    return { success: true, count };
-  };
-
-  const handleSetCurrentUser = (user: User) => {
-    setCurrentUser(user);
-    if (user && user.id) {
-      localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          userId: user.id,
-          email: user.email,
-          loggedInAt: new Date().toISOString(),
-          lastActivityAt: Date.now(),
-        })
-      );
-    }
-    lastActivityRef.current = Date.now();
-    setSessionRemainingSeconds(60);
-  };
 
   return (
     <AppContext.Provider
@@ -2900,7 +2626,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         inactivityNotice,
         setInactivityNotice,
         resetInactivityTimer,
-        encryptAllUserPasswords,
         projects,
         tasks,
         files,
@@ -2938,7 +2663,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteUser,
         updateUserPassword,
         updateUserProfile,
-        setCurrentUser: handleSetCurrentUser,
         setSelectedProjectId,
         setActiveProjectTab,
         setIsSearchOpen,
@@ -2980,7 +2704,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAdminConfig,
         updateClient,
         addClient,
-        resetAllDataToDemo,
       }}
     >
       {children}

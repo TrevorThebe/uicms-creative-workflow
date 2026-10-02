@@ -53,7 +53,6 @@ export const DatabaseSyncManager: React.FC = () => {
     importDatabaseJson,
     syncWithLocalApi,
     pushToLocalApi,
-    resetAllDataToDemo,
     currentUser,
   } = useApp();
 
@@ -78,10 +77,10 @@ export const DatabaseSyncManager: React.FC = () => {
   // Local File Upload Modal State
   const [showFileUploadModal, setShowFileUploadModal] = useState(false);
   const [uploadFileName, setUploadFileName] = useState('');
-  const [uploadFileSize, setUploadFileSize] = useState('2.4 MB');
-  const [uploadFileType, setUploadFileType] = useState('application/pdf');
+  const [uploadFileSize, setUploadFileSize] = useState('');
+  const [uploadFileType, setUploadFileType] = useState('');
   const [uploadFileCategory, setUploadFileCategory] = useState<ProjectFile['category']>('proofs');
-  const [uploadFileProjectId, setUploadFileProjectId] = useState(projects[0]?.id || 'PRJ-MKT-2026-001');
+  const [uploadFileProjectId, setUploadFileProjectId] = useState(projects[0]?.id || '');
   const [uploadFileVersion, setUploadFileVersion] = useState('V1.0');
   const [uploadFileDescription, setUploadFileDescription] = useState('');
   const [uploadFileUrl, setUploadFileUrl] = useState('');
@@ -192,17 +191,29 @@ export const DatabaseSyncManager: React.FC = () => {
   const handleCreateFile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFileName.trim()) return;
+    if (!projects.some((project) => project.id === uploadFileProjectId)) {
+      alert('Select an existing project.');
+      return;
+    }
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(uploadFileUrl.trim());
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') throw new Error();
+    } catch {
+      alert('Enter a valid HTTP or HTTPS file URL. Upload local files through the upload action.');
+      return;
+    }
 
     uploadFile({
       projectId: uploadFileProjectId,
       filename: uploadFileName.trim(),
-      size: uploadFileSize || '1.5 MB',
-      type: uploadFileType || 'application/pdf',
+      size: uploadFileSize,
+      type: uploadFileType,
       version: uploadFileVersion || 'V1.0',
       uploadedBy: currentUser.id,
       category: uploadFileCategory,
-      url: uploadFileUrl.trim() || `https://files.uicms.com/uploads/${encodeURIComponent(uploadFileName.trim())}`,
-      description: uploadFileDescription.trim() || 'Uploaded to local repository asset vault.',
+      url: parsedUrl.toString(),
+      description: uploadFileDescription.trim(),
     });
 
     setShowFileUploadModal(false);
@@ -217,8 +228,13 @@ export const DatabaseSyncManager: React.FC = () => {
 // Save to: C:/xampp/htdocs/uicms-api/get_projects.php or /var/www/html/uicms-api/
 // ============================================================================
 
-// 1. Enable CORS for local React development
-header("Access-Control-Allow-Origin: *");
+// 1. Allow only configured application origins
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$allowedOrigins = array_filter(array_map('trim', explode(',', getenv('CORS_ALLOWED_ORIGINS') ?: '')));
+if ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
+  header("Access-Control-Allow-Origin: $origin");
+  header('Vary: Origin');
+}
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Accept, Authorization");
 header("Content-Type: application/json; charset=UTF-8");
@@ -229,17 +245,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // 2. Database Connection Configuration (MySQL / MariaDB)
-$host = "localhost";
-$db_name = "uicms_workflow";
-$username = "root";
-$password = "";
+$host = getenv('DB_HOST') ?: '';
+$db_name = getenv('DB_NAME') ?: '';
+$username = getenv('DB_USER') ?: '';
+$password = getenv('DB_PASS') ?: '';
+
+if ($host === '' || $db_name === '' || $username === '' || $password === '') {
+  http_response_code(500);
+  echo json_encode(["error" => "Database configuration unavailable."]);
+  exit();
+}
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db_name;charset=utf8mb4", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
+  error_log('Database connection failed: ' . $e->getMessage());
+  echo json_encode(["error" => "Database connection failed."]);
     exit();
 }
 
@@ -328,18 +351,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Database (JSON)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Re-seed system demo dataset? All collections will be restored to initial enterprise states.')) {
-                  resetAllDataToDemo();
-                }
-              }}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Defaults</span>
             </button>
           </div>
         </div>

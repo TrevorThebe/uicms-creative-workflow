@@ -31,15 +31,12 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject }) => {
   const {
     currentUser,
-    users,
-    setCurrentUser,
     notifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     setSelectedProjectId,
     setActiveProjectTab,
     setIsSearchOpen,
-    resetAllDataToDemo,
     adminConfig,
     setIsNewRequestOpen,
     themeMode,
@@ -291,7 +288,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
                   ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
                   : 'bg-slate-950/80 border-slate-800/90 text-slate-300'
               }`}
-              title="Active session auto-monitored. 1 minute of inactivity triggers auto-logout. Any cursor movement, scroll, or keypress resets this timer."
+              title="Active session auto-monitored. 5 minutes of inactivity triggers auto-logout. Activity in this app resets this timer."
             >
               <Clock
                 className={`w-3.5 h-3.5 ${
@@ -373,12 +370,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
                   </div>
                 </div>
 
-                {/* Quick Persona Switch - Restricted Strictly to Super Users */}
+                {/* Super-admin account registration */}
                 {currentUser.role === 'super_admin' && (
                   <>
                     <div className="px-2.5 py-1.5 border-t border-slate-800/80 flex items-center justify-between">
                       <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                        Quick Persona Switch
+                        User Administration
                       </span>
                       <button
                         type="button"
@@ -391,66 +388,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
                       >
                         <UserPlus className="w-3 h-3" />
                         <span>+ Register User</span>
-                      </button>
-                    </div>
-
-                    <div className="max-h-60 overflow-y-auto space-y-1 pr-1 mt-1">
-                      {users.map((u) => {
-                        const isSelected = u.id === currentUser.id;
-                        const roleMeta = roleLabels[u.role] || { label: u.role, badge: 'bg-slate-700 text-slate-300' };
-                        return (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => {
-                              setCurrentUser(u);
-                              setIsUserDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center gap-2.5 p-2 rounded-lg text-left transition-colors ${
-                              isSelected
-                                ? 'bg-indigo-600/20 border border-indigo-500/40 text-white'
-                                : 'hover:bg-slate-800/80 text-slate-300'
-                            }`}
-                          >
-                            <img
-                              src={u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                              alt={u.name}
-                              className="w-7 h-7 rounded-full object-cover flex-shrink-0 ring-1 ring-slate-700"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold truncate text-white">
-                                  {u.name}
-                                </span>
-                                {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                              </div>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className={`text-[9px] px-1.5 py-0.2 rounded border ${roleMeta.badge}`}>
-                                  {roleMeta.label}
-                                </span>
-                                <span className="text-[10px] text-slate-400 truncate">
-                                  {u.roleTitle.split('(')[0]}
-                                </span>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-2 pt-2 border-t border-slate-800/80 px-2 flex items-center justify-between text-[11px]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm('Reset demo state back to default seeded data?')) {
-                            resetAllDataToDemo();
-                            setIsUserDropdownOpen(false);
-                          }
-                        }}
-                        className="inline-flex items-center gap-1 text-slate-400 hover:text-amber-400 transition-colors"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        <span>Reset Demo Data</span>
                       </button>
                     </div>
                   </>

@@ -46,11 +46,11 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
 
   // Metadata form
   const [targetProjectId, setTargetProjectId] = useState<string>(
-    defaultProjectId || projects[0]?.id || 'PRJ-MKT-2026-001'
+    defaultProjectId || projects[0]?.id || ''
   );
   const [filename, setFilename] = useState<string>('');
   const [fileSize, setFileSize] = useState<string>('');
-  const [mimeType, setMimeType] = useState<string>('application/pdf');
+  const [mimeType, setMimeType] = useState<string>('');
   const [category, setCategory] = useState<ProjectFile['category']>(defaultCategory);
   const [version, setVersion] = useState<string>('V1.0');
   const [description, setDescription] = useState<string>('');
@@ -122,6 +122,10 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
       setErrorMessage('Please specify a filename.');
       return;
     }
+    if (!targetProjectId || !projects.some((project) => project.id === targetProjectId)) {
+      setErrorMessage('Select an existing project before uploading.');
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -143,7 +147,11 @@ export const UploadLocalDeliverableModal: React.FC<UploadLocalDeliverableModalPr
           throw new Error(uploadResult.message || 'Failed to upload file to backend server');
         }
       } else {
-        finalUrl = fileDataUrl || externalUrl.trim() || `https://files.uicms.com/uploads/${encodeURIComponent(filename.trim())}`;
+        const parsedUrl = new URL(externalUrl.trim());
+        if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+          throw new Error('Use an HTTP or HTTPS asset URL.');
+        }
+        finalUrl = parsedUrl.toString();
       }
 
       // Upload file to app state

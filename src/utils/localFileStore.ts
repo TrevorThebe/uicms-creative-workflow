@@ -253,12 +253,10 @@ export function triggerLocalDownload(filename: string, urlOrData: string, mimeTy
       const blob = dataUrlToBlob(urlOrData);
       downloadUrl = URL.createObjectURL(blob);
       revokeNeeded = true;
-    } else if (urlOrData.startsWith('https://files.uicms.com') || !urlOrData.startsWith('http')) {
-      // Fictional URL from demo data - synthesize a real client-side asset so the user's download succeeds
-      const content = `UICMS Enterprise Deliverable Proof Archive\nFilename: ${filename}\nMIME Type: ${mimeType}\nGenerated: ${new Date().toISOString()}\nStatus: Verified Proof Artifact`;
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      downloadUrl = URL.createObjectURL(blob);
-      revokeNeeded = true;
+    } else if (urlOrData.startsWith('/')) {
+      downloadUrl = new URL(urlOrData, window.location.origin).toString();
+    } else if (!urlOrData.startsWith('blob:') && !/^https?:\/\//i.test(urlOrData)) {
+      throw new Error('The file does not have a valid download URL.');
     }
 
     const a = document.createElement('a');
@@ -276,7 +274,5 @@ export function triggerLocalDownload(filename: string, urlOrData: string, mimeTy
     }
   } catch (err) {
     console.error('[LocalFileStore] Failed to trigger download:', err);
-    // Fallback direct window open
-    window.open(urlOrData, '_blank');
   }
 }

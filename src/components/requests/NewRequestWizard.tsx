@@ -31,7 +31,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { fileToDataUrl, formatBytes } from '../../utils/localFileStore';
+import { formatBytes } from '../../utils/localFileStore';
 
 interface NewRequestWizardProps {
   onClose?: () => void;
@@ -71,11 +71,13 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Step 1: Department
-  const [selectedDept, setSelectedDept] = useState<DepartmentId>('marketing');
+  const [selectedDept, setSelectedDept] = useState<DepartmentId>(currentUser.departmentId || '' as DepartmentId);
   // Step 2: Request Type
-  const [selectedRequestTypeId, setSelectedRequestTypeId] = useState<string>('mkt-social-instagram');
+  const [selectedRequestTypeId, setSelectedRequestTypeId] = useState<string>(
+    getRequestTypesForDepartment(currentUser.departmentId)[0]?.id || ''
+  );
   // Client selection
-  const [selectedClientId, setSelectedClientId] = useState<string>(clients[0]?.id || 'cl-discovery');
+  const [selectedClientId, setSelectedClientId] = useState<string>(clients[0]?.id || '');
   const [projectName, setProjectName] = useState<string>('');
   const [campaignName, setCampaignName] = useState<string>('');
   const [priority, setPriority] = useState<PriorityLevel>('medium');
@@ -87,7 +89,6 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
   const [tempUploadedFiles, setTempUploadedFiles] = useState<
     Array<{ name: string; size: string; type: string; category: any; fileUrl: string }>
   >([]);
-  const [newFileName, setNewFileName] = useState('');
   const [newFileCategory, setNewFileCategory] = useState<string>('brief');
 
   // Step 5: Deadlines
@@ -116,10 +117,10 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
     users.find((u) => u.role === 'designer')?.id || currentUser.id
   );
   const [qaOwnerId, setQaOwnerId] = useState<string>(
-    users.find((u) => u.role === 'qa_user')?.id || 'usr-qa-1'
+    users.find((u) => u.role === 'qa_user')?.id || ''
   );
   const [approverId, setApproverId] = useState<string>(
-    users.find((u) => u.role === 'client')?.id || 'usr-client-1'
+    users.find((u) => u.role === 'client')?.id || ''
   );
   const [dependencies, setDependencies] = useState<string>('');
   const [risks, setRisks] = useState<string>('');
@@ -144,7 +145,14 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
 
   const handleLocalFileSelect = async (file: File) => {
     try {
-      const dataUrl = await fileToDataUrl(file);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', file.type.startsWith('image/') ? 'image' : 'file');
+      const response = await fetch('/php-backend/api/upload.php', { method: 'POST', body: formData });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success' || !result.url) {
+        throw new Error(result.message || 'File upload failed.');
+      }
       setTempUploadedFiles((prev) => [
         ...prev,
         {
@@ -152,32 +160,26 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
           size: formatBytes(file.size),
           type: file.type || 'application/octet-stream',
           category: newFileCategory,
-          fileUrl: dataUrl,
+          fileUrl: result.url,
         },
       ]);
     } catch (err) {
       console.error('Failed to attach file:', err);
+      alert(err instanceof Error ? err.message : 'The selected file could not be uploaded.');
     }
-  };
-
-  const handleAddDemoFile = () => {
-    if (!newFileName.trim()) return;
-    setTempUploadedFiles((prev) => [
-      ...prev,
-      {
-        name: newFileName.trim(),
-        size: '2.4 MB',
-        type: 'application/pdf',
-        category: newFileCategory,
-        fileUrl: `https://files.uicms.com/uploads/${encodeURIComponent(newFileName.trim())}`,
-      },
-    ]);
-    setNewFileName('');
   };
 
   const handleSubmitRequest = () => {
     if (!projectName.trim()) {
       alert('Please enter a valid project name.');
+      return;
+    }
+    if (!clients.some((client) => client.id === selectedClientId)) {
+      alert('Select an existing client before submitting this request.');
+      return;
+    }
+    if (!selectedDept || !selectedRequestTypeId || !qaOwnerId || !approverId) {
+      alert('Select a department, request type, QA owner, and approver before submitting.');
       return;
     }
 
@@ -614,47 +616,6 @@ export const NewRequestWizard: React.FC<NewRequestWizardProps> = (props) => {
                   </button>
                 </div>
 
-                <div className="relative flex items-center justify-center">
-                  <div className="border-t border-slate-800 w-full" />
-                  <span className="bg-slate-950 px-2 text-[10px] text-slate-400 uppercase font-mono absolute">
-                    or specify manually
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
-                    <input
-                      type="text"
-                      value={newFileName}
-                      onChange={(e) => setNewFileName(e.target.value)}
-                      placeholder="e.g. Discovery_Vector_Logo.svg, Itinerary_Copy.docx"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <select
-                      value={newFileCategory}
-                      onChange={(e) => setNewFileCategory(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="brief">Brief Document</option>
-                      <option value="ci_brand">Brand / CI Guidelines</option>
-                      <option value="content">Content Manuscript</option>
-                      <option value="images">Images / Photos</option>
-                      <option value="proofs">Proofs / Layouts</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleAddDemoFile}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Link / Asset Entry</span>
-                  </button>
-                </div>
               </div>
 
               {/* Uploaded List */}

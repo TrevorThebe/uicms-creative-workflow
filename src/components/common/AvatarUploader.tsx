@@ -12,59 +12,6 @@ import {
   X,
 } from 'lucide-react';
 
-export const DEFAULT_AVATAR_PRESETS = [
-  {
-    url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
-    label: 'Professional Lead (Eleanor)',
-    gender: 'female',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    label: 'Creative Director (Sarah)',
-    gender: 'female',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    label: 'Senior Designer (Liam)',
-    gender: 'male',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80',
-    label: 'QA Inspector (Priya)',
-    gender: 'female',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-    label: 'Dept Head (Marcus)',
-    gender: 'male',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=80',
-    label: 'Account Exec (Chloe)',
-    gender: 'female',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
-    label: 'Brand Approver (Alex)',
-    gender: 'male',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200&auto=format&fit=crop&q=80',
-    label: 'UI/UX Specialist (Zoe)',
-    gender: 'female',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
-    label: 'Motion Graphics (Devon)',
-    gender: 'male',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=200&auto=format&fit=crop&q=80',
-    label: 'Production Coordinator (Elena)',
-    gender: 'female',
-  },
-];
-
 interface AvatarUploaderProps {
   currentAvatar: string;
   onAvatarChange: (newAvatarUrl: string) => void;
@@ -121,30 +68,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
         return;
       }
 
-      // If svg file, keep directly if under 100KB, else convert
-      if (file.type === 'image/svg+xml' && file.size < 100 * 1024) {
-        fetch('/php-backend/api/upload.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64: result, filename: file.name, type: 'avatar' }),
-        })
-          .then(async (response) => {
-            const data = await response.json();
-            if (!response.ok || data.status !== 'success' || !data.url) {
-              throw new Error(data.message || 'Avatar upload failed.');
-            }
-            onAvatarChange(data.url);
-            setUploadSuccess(`"${file.name}" saved to avatars folder!`);
-            setTimeout(() => setUploadSuccess(null), 3000);
-          })
-          .catch((error) => {
-            setUploadError(error instanceof Error ? error.message : 'Avatar upload failed.');
-          })
-          .finally(() => setIsProcessing(false));
-        return;
-      }
-
-      // Resize and compress via HTML Canvas to maintain tiny memory and localStorage footprint (<30KB)
+      // Resize and rasterize images via HTML Canvas before uploading
       const img = new Image();
       img.onload = () => {
         try {
@@ -298,8 +222,8 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
   };
 
   const handleResetToDefault = () => {
-    onAvatarChange(DEFAULT_AVATAR_PRESETS[0].url);
-    setUploadSuccess('Reset to default system avatar.');
+    onAvatarChange('');
+    setUploadSuccess('Profile photo removed.');
     setTimeout(() => setUploadSuccess(null), 2500);
   };
 
@@ -332,11 +256,17 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
         <div className="flex flex-col sm:flex-row items-center gap-4">
           {/* Avatar Thumbnail with Camera Action Badge */}
           <div className="relative group cursor-pointer flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
-            <img
-              src={currentAvatar || DEFAULT_AVATAR_PRESETS[0]?.url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-              alt={userName}
-              className={`${avatarDimensions} rounded-2xl object-cover ring-2 ring-indigo-500/40 shadow-lg group-hover:opacity-80 transition-all`}
-            />
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                alt={userName}
+                className={`${avatarDimensions} rounded-2xl object-cover ring-2 ring-indigo-500/40 shadow-lg group-hover:opacity-80 transition-all`}
+              />
+            ) : (
+              <div className={`${avatarDimensions} rounded-2xl bg-slate-800 ring-2 ring-indigo-500/40 flex items-center justify-center text-xl font-bold text-slate-300`}>
+                {userName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?'}
+              </div>
+            )}
             <div className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity">
               <Camera className="w-5 h-5 mb-0.5" />
               <span className="text-[9px] font-bold">Change</span>

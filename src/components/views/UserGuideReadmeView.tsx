@@ -410,9 +410,9 @@ export const UserGuideReadmeView: React.FC = () => {
             step: 'Use the "Database & Sync Manager" panel to download backups or test MySQL database bridge connectivity.',
           },
           {
-            name: '5. Workflow Policies & Demo State Reset',
-            desc: 'Enforce brief lock completeness rules, set department SLA deadlines, or re-seed the system with pristine enterprise demo datasets.',
-            step: 'Click "Reset Demo System State" in the header to restore pristine demo data across all 4 departments.',
+            name: '5. Workflow Policies & Database Operations',
+            desc: 'Enforce brief-lock, QA, and approval rules, and monitor persisted workspace records.',
+            step: 'Use the database tools to inspect synchronization status and export the current persisted records.',
           },
         ],
       },

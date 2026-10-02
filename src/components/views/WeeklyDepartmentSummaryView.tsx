@@ -71,63 +71,76 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
   const [dismissedIssueIds, setDismissedIssueIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const reportingRange = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const daysSinceMonday = (start.getDay() + 6) % 7;
+    const weekOffset = selectedWeek === 'previous' ? -7 : selectedWeek === 'upcoming' ? 7 : 0;
+    start.setDate(start.getDate() - daysSinceMonday + weekOffset);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    const lastDay = new Date(end);
+    lastDay.setDate(lastDay.getDate() - 1);
+    return {
+      start,
+      end,
+      label: `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${lastDay.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
+    };
+  }, [selectedWeek]);
+
+  const isInReportingWeek = (value?: string) => {
+    const timestamp = Date.parse(value || '');
+    return Number.isFinite(timestamp) && timestamp >= reportingRange.start.getTime() && timestamp < reportingRange.end.getTime();
+  };
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Department definitions
-  const departmentsList: Array<{
-    id: DepartmentId;
-    name: string;
-    shortName: string;
-    icon: React.ElementType;
-    color: string;
-    head: string;
-    description: string;
-  }> = [
-    {
-      id: 'marketing',
-      name: 'Marketing & Creative Production',
-      shortName: 'Marketing',
-      icon: Palette,
-      color: 'from-pink-500/20 to-rose-500/10 text-pink-400 border-pink-500/30',
-      head: 'Marcus Sterling',
-      description: 'Brand campaigns, digital media, carousels, animations and marketing collateral.',
-    },
-    {
-      id: 'incentive_travel',
-      name: 'Incentive Travel & Events Logistics',
-      shortName: 'Incentive Travel',
-      icon: Plane,
-      color: 'from-sky-500/20 to-indigo-500/10 text-sky-400 border-sky-500/30',
-      head: 'Sophia Chen',
-      description: 'Luxury itineraries, travel document suites, print collateral, luggage tags and vouchers.',
-    },
-    {
-      id: 'online_ram',
-      name: 'Online (RAM) & Rewards Engineering',
-      shortName: 'Online RAM',
-      icon: Flame,
-      color: 'from-amber-500/20 to-orange-500/10 text-amber-400 border-amber-500/30',
-      head: 'David Ndlovu',
-      description: 'Dealer sprint contests, cash vouchers, loyalty banners and digital reward platforms.',
-    },
-    {
-      id: 'development',
-      name: 'Technology & Systems Engineering',
-      shortName: 'Technology',
-      icon: Zap,
-      color: 'from-emerald-500/20 to-teal-500/10 text-emerald-400 border-emerald-500/30',
-      head: 'Eleanor Vance',
-      description: 'Custom web portals, API integrations, and workflow automation tooling.',
-    },
+  const departmentIds = Array.from(new Set([
+    ...users.map((user) => user.departmentId),
+    ...projects.map((project) => project.departmentId),
+  ].filter(Boolean)));
+  const departmentColors = [
+    'from-sky-500/20 to-indigo-500/10 text-sky-400 border-sky-500/30',
+    'from-emerald-500/20 to-teal-500/10 text-emerald-400 border-emerald-500/30',
+    'from-amber-500/20 to-orange-500/10 text-amber-400 border-amber-500/30',
+    'from-rose-500/20 to-red-500/10 text-rose-400 border-rose-500/30',
   ];
+  const departmentIcons = [Palette, Plane, Flame, Zap, Layers];
+  const departmentsList = departmentIds.map((id, index) => {
+    const departmentUsers = users.filter((user) => user.departmentId === id);
+    const departmentProjects = projects.filter((project) => project.departmentId === id);
+    const name = id.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+    return {
+      id: id as DepartmentId,
+      name,
+      shortName: name,
+      icon: departmentIcons[index % departmentIcons.length],
+      color: departmentColors[index % departmentColors.length],
+      head: departmentUsers.find((user) => user.role === 'department_manager')?.name || 'Unassigned',
+      description: `${departmentUsers.length} users · ${departmentProjects.length} projects`,
+    };
+  });
 
-  // Projects filtered by selected department
+  // Include projects created, updated, or due in the selected reporting week.
   const filteredProjects = useMemo(() => {
-    return projects.filter((p) => (selectedDept === 'all' ? true : p.departmentId === selectedDept));
-  }, [projects, selectedDept]);
+    return projects.filter((project) => {
+      if (selectedDept !== 'all' && project.departmentId !== selectedDept) return false;
+      return [
+        project.createdAt,
+        project.updatedAt,
+        project.briefDueDate,
+        project.productionDueDate,
+        project.internalQaDueDate,
+        project.clientReviewDueDate,
+        project.clientApprovalDueDate,
+        project.finalQaDueDate,
+        project.releaseDate,
+      ].some(isInReportingWeek);
+    });
+  }, [projects, selectedDept, reportingRange]);
 
   // Urgent Issues Computation
   const urgentIssues = useMemo(() => {
@@ -290,10 +303,13 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
 
     // 1. Projects Completed or in Final Release
     projects
-      .filter((p) => p.stage === 'RELEASE_PUBLISH' || p.stage === 'ARCHIVE' || p.status === 'completed')
+      .filter((p) =>
+        (p.stage === 'RELEASE_PUBLISH' || p.stage === 'ARCHIVE' || p.status === 'completed') &&
+        isInReportingWeek(p.releaseDate || p.updatedAt)
+      )
       .forEach((p) => {
         const client = clients.find((c) => c.id === p.clientId)?.name || p.clientId;
-        const owner = users.find((u) => u.id === p.projectOwnerId)?.name || 'Team Lead';
+        const owner = users.find((u) => u.id === p.projectOwnerId)?.name || 'Unassigned';
         list.push({
           id: `ach-rel-${p.id}`,
           projectId: p.id,
@@ -303,8 +319,8 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
           type: 'release',
           title: `Final Artwork Pack Delivered & Published`,
           description: `Successfully published deliverable ${p.version} to production repository.`,
-          date: p.releaseDate || 'This Week',
-          metric: '100% Complete',
+          date: p.releaseDate || p.updatedAt,
+          metric: 'Completed',
           leadName: owner,
         });
       });
@@ -312,7 +328,7 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
     // 2. Client Approvals Secured
     approvals.forEach((appr) => {
       const p = projects.find((proj) => proj.id === appr.projectId);
-      if (p && (appr.decision === 'APPROVED' || appr.decision === 'APPROVED_WITH_NOTES')) {
+      if (p && (appr.decision === 'APPROVED' || appr.decision === 'APPROVED_WITH_NOTES') && isInReportingWeek(appr.approvedAt)) {
         const client = clients.find((c) => c.id === p.clientId)?.name || p.clientId;
         list.push({
           id: `ach-appr-${appr.id}`,
@@ -324,15 +340,15 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
           title: `Executive Client Sign-Off Secured`,
           description: `${appr.clientName} (${appr.clientPosition}) formally signed off on ${appr.versionNumber}.`,
           date: new Date(appr.approvedAt).toLocaleDateString(),
-          metric: 'Signed & Verified',
+          metric: appr.decision,
           leadName: appr.clientName,
         });
       }
     });
 
-    // 3. QA Passed with 100% Score
+    // 3. QA Passed
     qaSubmissions
-      .filter((q) => q.result === 'PASS')
+      .filter((q) => q.result === 'PASS' && isInReportingWeek(q.performedAt))
       .forEach((q) => {
         const p = projects.find((proj) => proj.id === q.projectId);
         if (p) {
@@ -345,9 +361,9 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
             clientName: client,
             type: 'qa_pass',
             title: `Zero-Defect QA Pre-flight Certification`,
-            description: `Passed all ${q.passedCount || 16} brand, color calibration, and print pre-flight checks.`,
+            description: `Passed ${q.passedCount ?? 0} recorded checks.`,
             date: new Date(q.performedAt).toLocaleDateString(),
-            metric: '100% Quality Score',
+            metric: q.result,
             leadName: q.performedByName,
           });
         }
@@ -355,11 +371,11 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
 
     // 4. Briefs Validated & Locked
     projects
-      .filter((p) => p.isBriefLocked && p.stage !== 'REQUESTED')
+      .filter((p) => p.isBriefLocked && p.stage !== 'REQUESTED' && isInReportingWeek(p.briefLockedAt || p.updatedAt))
       .slice(0, 4)
       .forEach((p) => {
         const client = clients.find((c) => c.id === p.clientId)?.name || p.clientId;
-        const accountable = users.find((u) => u.id === p.accountableUserId)?.name || 'Account Director';
+        const accountable = users.find((u) => u.id === p.accountableUserId)?.name || 'Unassigned';
         list.push({
           id: `ach-brf-${p.id}`,
           projectId: p.id,
@@ -369,26 +385,26 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
           type: 'brief_locked',
           title: `Mandatory Brief Locked & Scoped`,
           description: `All technical specifications, dimensions, and CI rules validated and locked into production.`,
-          date: p.briefLockedAt ? new Date(p.briefLockedAt).toLocaleDateString() : 'Validated',
+          date: p.briefLockedAt || p.updatedAt,
           metric: `${p.briefCompleteness}% Complete`,
           leadName: accountable,
         });
       });
 
     return list.filter((ach) => (selectedDept === 'all' ? true : ach.departmentId === selectedDept));
-  }, [projects, clients, users, approvals, qaSubmissions, selectedDept]);
+  }, [projects, clients, users, approvals, qaSubmissions, selectedDept, reportingRange]);
 
   // Department Summaries Breakdown
   const deptStats = useMemo(() => {
     return departmentsList.map((dept) => {
-      const deptProjects = projects.filter((p) => p.departmentId === dept.id);
+      const deptProjects = filteredProjects.filter((p) => p.departmentId === dept.id);
       const active = deptProjects.filter((p) => p.stage !== 'ARCHIVE' && p.status !== 'completed');
       const completed = deptProjects.filter((p) => p.stage === 'ARCHIVE' || p.status === 'completed' || p.stage === 'RELEASE_PUBLISH');
       const inProd = deptProjects.filter((p) => p.stage === 'PRODUCTION' || p.stage === 'INTERNAL_QA');
       const inReview = deptProjects.filter((p) => p.stage === 'CLIENT_REVIEW' || p.stage === 'CLIENT_APPROVAL');
       const issues = urgentIssues.filter((i) => i.departmentId === dept.id);
       const onTrack = deptProjects.filter((p) => p.status === 'on_track' && p.stage !== 'ARCHIVE');
-      const healthPercentage = active.length > 0 ? Math.round((onTrack.length / active.length) * 100) : 100;
+      const healthPercentage = active.length > 0 ? Math.round((onTrack.length / active.length) * 100) : 0;
 
       return {
         ...dept,
@@ -402,7 +418,7 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
         active,
       };
     });
-  }, [projects, urgentIssues]);
+  }, [filteredProjects, urgentIssues]);
 
   // Overall KPI Calculations
   const totalActive = filteredProjects.filter((p) => p.stage !== 'ARCHIVE' && p.status !== 'completed').length;
@@ -410,7 +426,7 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
     (p) => p.stage === 'ARCHIVE' || p.status === 'completed' || p.stage === 'RELEASE_PUBLISH'
   ).length;
   const totalOnTrack = filteredProjects.filter((p) => p.status === 'on_track' && p.stage !== 'ARCHIVE').length;
-  const overallVelocityScore = totalActive > 0 ? Math.round((totalOnTrack / totalActive) * 100) : 100;
+  const overallVelocityScore = totalActive > 0 ? Math.round((totalOnTrack / totalActive) * 100) : 0;
 
   // Generate and Copy Executive Brief text
   const handleCopyMarkdownSummary = () => {
@@ -418,7 +434,7 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
     const deptTitle = activeDeptObj ? activeDeptObj.name : 'All Creative & Engineering Departments';
 
     let md = `# 📊 UICMS Executive Weekly Work Summary: ${deptTitle}\n`;
-    md += `**Reporting Period:** Week 39 (Sept 21 – Sept 27, 2026) | **Generated By:** ${currentUser.name}\n\n`;
+    md += `**Reporting Period:** ${reportingRange.label} | **Generated By:** ${currentUser.name}\n\n`;
 
     md += `## 🚀 Velocity & Output Summary\n`;
     md += `- **Active Projects in Flight:** ${totalActive}\n`;
@@ -478,7 +494,7 @@ export const WeeklyDepartmentSummaryView: React.FC<WeeklyDepartmentSummaryViewPr
                   Weekly Department Work Summary
                 </h1>
                 <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono font-bold">
-                  Week 39 · Sept 2026
+                  {reportingRange.label}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">

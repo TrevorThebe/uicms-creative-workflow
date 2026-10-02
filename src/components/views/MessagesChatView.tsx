@@ -63,14 +63,6 @@ interface ChannelItem {
   lastMessage?: ChatMessage;
 }
 
-const DEPARTMENT_CHANNELS = [
-  { id: 'general', name: 'general-announcements', desc: 'Company-wide updates, milestones and releases', icon: Sparkles },
-  { id: 'dept-marketing', name: 'marketing-ops', desc: 'Creative production, social media, copy and brand assets', icon: Layers },
-  { id: 'dept-incentive-travel', name: 'travel-logistics', desc: 'Itineraries, ticketing, PVC badges and print collateral', icon: Building2 },
-  { id: 'dept-online-ram', name: 'ram-rewards-sprints', desc: 'Dealer sprint challenges, leaderboards and digital vouchers', icon: Flame },
-  { id: 'dept-qa-compliance', name: 'qa-compliance-lead', desc: 'Pre-flight audits, CI checks, and resolution tracking', icon: Shield },
-];
-
 export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProject }) => {
   const {
     currentUser,
@@ -87,7 +79,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
 
   // Channel Selection State
   const [selectedChannelType, setSelectedChannelType] = useState<ChannelType>('project');
-  const [selectedChannelId, setSelectedChannelId] = useState<string>('PRJ-TRV-2026-004'); // default to active Dubai project
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
   const [channelFilterTab, setChannelFilterTab] = useState<'all' | 'project' | 'direct' | 'department'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showRightPanel, setShowRightPanel] = useState(true);
@@ -103,6 +95,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   // Auto scroll on message list update
   useEffect(() => {
@@ -149,19 +142,21 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
   }, [users, currentUser, chatMessages]);
 
   const departmentChannels: ChannelItem[] = useMemo(() => {
-    return DEPARTMENT_CHANNELS.map((d) => {
-      const deptMsgs = chatMessages.filter((m) => m.channelId === d.id);
+    const departmentIds = Array.from(new Set(users.map((user) => user.departmentId).filter(Boolean)));
+    return departmentIds.map((departmentId) => {
+      const channelId = `dept-${departmentId}`;
+      const deptMsgs = chatMessages.filter((m) => m.channelId === channelId);
       const lastMsg = deptMsgs[deptMsgs.length - 1];
       return {
-        id: d.id,
+        id: channelId,
         type: 'department',
-        title: `# ${d.name}`,
-        subtitle: d.desc,
-        icon: d.icon,
+        title: `# ${departmentId.replace(/[_-]+/g, '-')}`,
+        subtitle: `${users.filter((user) => user.departmentId === departmentId).length} members`,
+        icon: Layers,
         lastMessage: lastMsg,
       };
     });
-  }, [chatMessages]);
+  }, [chatMessages, users]);
 
   // Filtered Channels List
   const allChannels = useMemo(() => {
@@ -195,6 +190,17 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
       return directChannels.find((c) => c.id === selectedChannelId) || directChannels[0];
     } else {
       return departmentChannels.find((c) => c.id === selectedChannelId) || departmentChannels[0];
+    }
+  }, [selectedChannelType, selectedChannelId, projectChannels, directChannels, departmentChannels]);
+
+  useEffect(() => {
+    const availableChannels = selectedChannelType === 'project'
+      ? projectChannels
+      : selectedChannelType === 'direct'
+        ? directChannels
+        : departmentChannels;
+    if (!availableChannels.some((channel) => channel.id === selectedChannelId)) {
+      setSelectedChannelId(availableChannels[0]?.id || '');
     }
   }, [selectedChannelType, selectedChannelId, projectChannels, directChannels, departmentChannels]);
 
@@ -298,14 +304,20 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
     textareaRef.current?.focus();
   };
 
-  const attachSampleFile = (type: 'pdf' | 'figma' | 'image') => {
-    const filename =
-      type === 'pdf'
-        ? `Flight_Manifest_Dubai_V2.pdf`
-        : type === 'figma'
-        ? `Luggage_Tag_DieLine_CopperFoil.fig`
-        : `Hero_Banner_1920x600_Proof.png`;
-    setAttachedFiles((prev) => [...prev, filename]);
+  const handleAttachFile = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', 'file');
+    try {
+      const response = await fetch('/php-backend/api/upload.php', { method: 'POST', body: formData });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success' || !result.url) {
+        throw new Error(result.message || 'File upload failed.');
+      }
+      setAttachedFiles((previous) => [...previous, result.url]);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'The file could not be uploaded.');
+    }
   };
 
   return (
@@ -934,7 +946,7 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700"
                   >
                     <Paperclip className="w-3 h-3 text-indigo-400" />
-                    {f}
+                    {decodeURIComponent(f.split('?')[0].split('/').pop() || f)}
                     <X
                       className="w-3 h-3 ml-1 cursor-pointer hover:text-white"
                       onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
@@ -946,6 +958,16 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
 
             {/* Composer Box */}
             <form onSubmit={handleSendMessage} className="space-y-2">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleAttachFile(file);
+                  event.currentTarget.value = '';
+                }}
+              />
               <div className="relative">
                 <textarea
                   ref={textareaRef}
@@ -983,9 +1005,9 @@ export const MessagesChatView: React.FC<MessagesChatViewProps> = ({ onOpenProjec
 
                   <button
                     type="button"
-                    onClick={() => attachSampleFile('pdf')}
+                    onClick={() => attachmentInputRef.current?.click()}
                     className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition-colors"
-                    title="Attach proof PDF"
+                    title="Attach a file"
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>

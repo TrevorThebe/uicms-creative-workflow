@@ -83,7 +83,7 @@ export const UserManagementPanel: React.FC = () => {
     setEditError(null);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
     setEditError(null);
@@ -99,11 +99,11 @@ export const UserManagementPanel: React.FC = () => {
     }
 
     if (editPassword.trim()) {
-      if (editPassword.trim().length < 6) {
-        setEditError('New password must be at least 6 characters in length.');
+      if (editPassword.trim().length < 12) {
+        setEditError('New password must be at least 12 characters in length.');
         return;
       }
-      const passRes = updateUserPassword(editingUser.id, '', editPassword.trim());
+      const passRes = await updateUserPassword(editingUser.id, '', editPassword.trim());
       if (!passRes.success) {
         setEditError(passRes.error || 'Failed to update user password.');
         return;
@@ -181,11 +181,13 @@ export const UserManagementPanel: React.FC = () => {
     }
   };
 
-  const handleSendRecoveryPin = (u: User) => {
-    const res = forgotPassword(u.email);
+  const handleSendRecoveryPin = async (u: User) => {
+    const res = await forgotPassword(u.email);
     if (res.success) {
-      setActionSuccess(`Temporary password (${res.tempPassword}) dispatched to personal email (${res.sentToEmail}) for ${u.name}.`);
+      setActionSuccess(`If email delivery is configured, a password reset code was sent to ${u.name}'s registered email.`);
       setTimeout(() => setActionSuccess(null), 5000);
+    } else {
+      setEditError(res.error || 'Could not request a password reset.');
     }
   };
 

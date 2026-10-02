@@ -166,7 +166,8 @@ Click any project card or table row to open the 8-tab workspace:
 
 ### 4.15 Local Database API Sync & AWS Hosting (🔒 Superuser Only)
 * **JSON Backup / Restore:** One-click full export and import of all application collections.
-* **Local PHP/MySQL Bridge:** The app reads and saves application records in the relational tables in `uicms_workflow`. XAMPP defaults to MySQL `root` with no password; set `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, and `DB_PORT` in the PHP environment when your local credentials differ.
+* **Local PHP/MySQL Bridge:** The app reads and saves application records in the relational tables in `uicms_workflow`. Set `APP_ENV=development` for a local root/no-password XAMPP database. Staging and production require explicit `DB_HOST`, `DB_NAME`, non-root `DB_USER`, and non-empty `DB_PASS` values in the backend environment; never put these in frontend variables or commit `.env` files. Docker Compose reads `php-backend/.env` and fails closed when required secrets are missing. Password recovery also requires `APP_MAIL_FROM` and a working PHP mail transport; set up SMTP/sendmail delivery before enabling account recovery.
+* **Initial Administrator:** Public registration creates a team-member account only. The SQL bootstrap creates schema and department lookup rows, not demo users or projects. Provision the first super-admin from a trusted server terminal with `php php-backend/cli/create-admin.php`; the command requires database environment variables and prompts for account details.
 * **Local API startup:** From the workspace root, run `php -S 127.0.0.1:8088 -t .`; Vite proxies `/php-backend` to this server. Set `PHP_API_TARGET` to change the proxy target.
 * **Stored files:** `project_files` stores file metadata and URLs; the file contents remain at those URLs.
 * **AWS Deployment Specs:** Full architectural blueprints and sizing for ECS Fargate, RDS MySQL, S3, and EC2 (recommended `t3.small` / Ubuntu 24.04 LTS).

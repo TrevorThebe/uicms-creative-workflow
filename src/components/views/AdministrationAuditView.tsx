@@ -18,8 +18,6 @@ import { UserManagementPanel } from '../admin/UserManagementPanel';
 import { DatabaseSyncManager } from '../admin/DatabaseSyncManager';
 import { SystemUsageAnalyticsPanel } from '../admin/SystemUsageAnalyticsPanel';
 import { PhpBackendStatusIndicator } from '../admin/PhpBackendStatusIndicator';
-import { PasswordSecurityPanel } from '../admin/PasswordSecurityPanel';
-import { SecurityRulesAuditPanel } from '../admin/SecurityRulesAuditPanel';
 
 export const AdministrationAuditView: React.FC = () => {
   const {
@@ -29,7 +27,6 @@ export const AdministrationAuditView: React.FC = () => {
     updateAdminConfig,
     activityLogs,
     users,
-    resetAllDataToDemo,
     themeMode,
     setThemeMode,
   } = useApp();
@@ -111,6 +108,9 @@ export const AdministrationAuditView: React.FC = () => {
   });
 
   const distinctActions = Array.from(new Set(activityLogs.map((l) => l.action)));
+  const securityEvents = activityLogs
+    .filter((log) => /login|logout|password|session|suspend|reactivat|user|auth|security/i.test(log.action))
+    .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp));
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-150">
@@ -130,19 +130,6 @@ export const AdministrationAuditView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (confirm('Reset entire system demo state to initial defaults?')) {
-              resetAllDataToDemo();
-              alert('System demo data successfully re-seeded.');
-            }
-          }}
-          className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-amber-600 hover:text-white text-slate-300 text-xs font-semibold flex items-center gap-2 transition-colors self-start sm:self-auto"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset Demo System State</span>
-        </button>
       </div>
 
       {/* PHP Backend REST API & MySQL Connectivity Status Poller */}
@@ -157,11 +144,33 @@ export const AdministrationAuditView: React.FC = () => {
       {/* User Administration & Governance Section */}
       <UserManagementPanel />
 
-      {/* Password Security, Cryptographic Vault & Keys Panel */}
-      <PasswordSecurityPanel />
-
-      {/* Enterprise Security Rules & Compliance Audit Engine */}
-      <SecurityRulesAuditPanel />
+      <section className="p-6 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-white">Security Activity</h3>
+            <p className="text-xs text-slate-400">Recent security-related records loaded from the activity log.</p>
+          </div>
+          <span className="font-mono text-xs text-slate-300">{securityEvents.length} events</span>
+        </div>
+        {securityEvents.length === 0 ? (
+          <p className="py-6 text-center text-xs text-slate-400">No security activity has been recorded.</p>
+        ) : (
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-800">
+            {securityEvents.slice(0, 10).map((event) => (
+              <div key={event.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-white">{event.action}</p>
+                  <p className="text-xs text-slate-400">{event.description}</p>
+                  <p className="text-[11px] text-slate-500">{event.userName}</p>
+                </div>
+                <time className="shrink-0 text-[11px] font-mono text-slate-500">
+                  {new Date(event.timestamp).toLocaleString()}
+                </time>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Theme & Display Mode */}
       <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4">

@@ -129,19 +129,19 @@ export const UserProfileModal: React.FC = () => {
       if (!res.success) {
         setEmailError(res.error || 'Failed to reset email address.');
       } else {
-        setEmailSuccess('Email address reset successfully! Temporary passwords and recovery notices will be delivered to your personal email.');
+        setEmailSuccess('Email address updated. Future password reset codes will be sent to this address.');
         setTimeout(() => setEmailSuccess(null), 4000);
       }
     }, 250);
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
     setPasswordSuccess(null);
 
-    if (!newPassword || newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters in length.');
+    if (!newPassword || newPassword.length < 12) {
+      setPasswordError('New password must be at least 12 characters in length.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -149,7 +149,7 @@ export const UserProfileModal: React.FC = () => {
       return;
     }
 
-    const res = updateUserPassword(currentUser.id, oldPassword, newPassword);
+    const res = await updateUserPassword(currentUser.id, oldPassword, newPassword);
     if (!res.success) {
       setPasswordError(res.error || 'Failed to update password.');
     } else {

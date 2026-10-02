@@ -39,21 +39,20 @@ import {
   Zap,
 } from 'lucide-react';
 
-const DEPARTMENT_COLORS: Record<string, string> = {
-  marketing: '#6366f1', // Indigo
-  incentive_travel: '#06b6d4', // Cyan
-  online_ram: '#f59e0b', // Amber
-  development: '#10b981', // Emerald
+const CHART_COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#a855f7', '#14b8a6'];
+
+const getMonthBuckets = (range: '6m' | '12m' | 'ytd') => {
+  const now = new Date();
+  const monthCount = range === 'ytd' ? now.getMonth() + 1 : range === '6m' ? 6 : 12;
+  return Array.from({ length: monthCount }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - monthCount + 1 + index, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    return { key, name: date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) };
+  });
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  super_admin: '#8b5cf6', // Purple
-  department_manager: '#6366f1', // Indigo
-  account_manager: '#3b82f6', // Blue
-  designer: '#06b6d4', // Cyan
-  qa_user: '#f59e0b', // Amber
-  client: '#10b981', // Emerald
-};
+const formatGroupName = (key: string) =>
+  key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
 
 export const SystemUsageAnalyticsPanel: React.FC = () => {
   const { projects, users, activityLogs, tasks, versions, qaSubmissions, approvals } = useApp();
@@ -61,77 +60,35 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
   const [timeRange, setTimeRange] = useState<'6m' | '12m' | 'ytd'>('6m');
   const [requestChartType, setRequestChartType] = useState<'stacked' | 'area'>('area');
   const [userDistributionType, setUserDistributionType] = useState<'department' | 'role'>('department');
+  const departmentKeys = useMemo(
+    () => Array.from(new Set(projects.map((project) => project.departmentId || 'unassigned'))),
+    [projects]
+  );
 
-  // Compute monthly project requests breakdown 100% dynamically from database projects collection
+  // Build month and department buckets from the selected period and persisted projects.
   const monthlyRequestsData = useMemo(() => {
-    const monthsList = [
-      { key: '2026-01', name: 'Jan 2026' },
-      { key: '2026-02', name: 'Feb 2026' },
-      { key: '2026-03', name: 'Mar 2026' },
-      { key: '2026-04', name: 'Apr 2026' },
-      { key: '2026-05', name: 'May 2026' },
-      { key: '2026-06', name: 'Jun 2026' },
-      { key: '2026-07', name: 'Jul 2026' },
-      { key: '2026-08', name: 'Aug 2026' },
-      { key: '2026-09', name: 'Sep 2026' },
-      { key: '2026-10', name: 'Oct 2026' },
-      { key: '2026-11', name: 'Nov 2026' },
-      { key: '2026-12', name: 'Dec 2026' },
-    ];
-
-    // Count actual projects per month and department from database
-    const monthMap: Record<
-      string,
-      {
-        month: string;
-        marketing: number;
-        incentive_travel: number;
-        online_ram: number;
-        development: number;
-        total: number;
-      }
-    > = {};
-
-    monthsList.forEach((m) => {
-      monthMap[m.key] = {
-        month: m.name,
-        marketing: 0,
-        incentive_travel: 0,
-        online_ram: 0,
-        development: 0,
-        total: 0,
-      };
+    const months = getMonthBuckets(timeRange);
+    const monthMap = new Map<string, Record<string, string | number>>();
+    months.forEach(({ key, name }) => {
+      const bucket: Record<string, string | number> = { month: name, total: 0 };
+      departmentKeys.forEach((departmentId) => { bucket[departmentId] = 0; });
+      monthMap.set(key, bucket);
     });
 
-    // Dynamically aggregate from database projects collection
-    projects.forEach((proj) => {
-      const dateStr = proj.createdAt || '2026-09-01';
-      const key = dateStr.substring(0, 7);
-      if (monthMap[key]) {
-        const deptKey = (proj.departmentId || 'marketing') as
-          | 'marketing'
-          | 'incentive_travel'
-          | 'online_ram'
-          | 'development';
-        if (monthMap[key][deptKey] !== undefined) {
-          monthMap[key][deptKey] += 1;
-        } else {
-          monthMap[key].marketing += 1;
-        }
-        monthMap[key].total += 1;
-      }
+    projects.forEach((project) => {
+      const timestamp = Date.parse(project.createdAt || '');
+      if (!Number.isFinite(timestamp)) return;
+      const date = new Date(timestamp);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const bucket = monthMap.get(key);
+      if (!bucket) return;
+      const departmentId = project.departmentId || 'unassigned';
+      bucket[departmentId] = Number(bucket[departmentId] || 0) + 1;
+      bucket.total = Number(bucket.total) + 1;
     });
 
-    let result = Object.values(monthMap);
-
-    if (timeRange === '6m') {
-      result = result.slice(3, 9); // Apr to Sep 2026
-    } else if (timeRange === 'ytd') {
-      result = result.slice(0, 9); // Jan to Sep 2026
-    }
-
-    return result;
-  }, [projects, timeRange]);
+    return Array.from(monthMap.values());
+  }, [departmentKeys, projects, timeRange]);
 
   // Compute active vs suspended user counts
   const userMetrics = useMemo(() => {
@@ -139,57 +96,31 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
     const activeUsers = users.filter((u) => u.active && !u.isSuspended).length;
     const suspendedUsers = users.filter((u) => u.isSuspended || !u.active).length;
 
-    const departmentDistribution: Record<string, { name: string; active: number; suspended: number; total: number }> = {
-      marketing: { name: 'Marketing & Creative', active: 0, suspended: 0, total: 0 },
-      incentive_travel: { name: 'Incentive Travel', active: 0, suspended: 0, total: 0 },
-      online_ram: { name: 'Online RAM & Rewards', active: 0, suspended: 0, total: 0 },
-      development: { name: 'Systems Engineering', active: 0, suspended: 0, total: 0 },
-    };
-
-    const roleDistribution: Record<string, { name: string; active: number; count: number }> = {
-      super_admin: { name: 'Super Admin', active: 0, count: 0 },
-      department_manager: { name: 'Dept Manager', active: 0, count: 0 },
-      account_manager: { name: 'Account Manager', active: 0, count: 0 },
-      designer: { name: 'Designer / Art Dir', active: 0, count: 0 },
-      qa_user: { name: 'QA Lead', active: 0, count: 0 },
-      client: { name: 'Client Stakeholder', active: 0, count: 0 },
-    };
+    const departmentDistribution = new Map<string, { active: number; suspended: number; total: number }>();
+    const roleDistribution = new Map<string, { active: number; count: number }>();
 
     users.forEach((u) => {
-      const deptKey = u.departmentId || 'marketing';
-      if (departmentDistribution[deptKey]) {
-        departmentDistribution[deptKey].total += 1;
-        if (u.active && !u.isSuspended) {
-          departmentDistribution[deptKey].active += 1;
-        } else {
-          departmentDistribution[deptKey].suspended += 1;
-        }
-      }
+      const departmentId = u.departmentId || 'unassigned';
+      const department = departmentDistribution.get(departmentId) || { active: 0, suspended: 0, total: 0 };
+      department.total += 1;
+      if (u.active && !u.isSuspended) department.active += 1;
+      else department.suspended += 1;
+      departmentDistribution.set(departmentId, department);
 
-      const roleKey = u.role || 'designer';
-      if (roleDistribution[roleKey]) {
-        roleDistribution[roleKey].count += 1;
-        if (u.active && !u.isSuspended) {
-          roleDistribution[roleKey].active += 1;
-        }
-      }
+      const roleId = u.role || 'unassigned';
+      const role = roleDistribution.get(roleId) || { active: 0, count: 0 };
+      role.count += 1;
+      if (u.active && !u.isSuspended) role.active += 1;
+      roleDistribution.set(roleId, role);
     });
 
-    const departmentChartData = Object.entries(departmentDistribution).map(([key, value]) => ({
-      key,
-      name: value.name,
-      active: value.active,
-      suspended: value.suspended,
-      total: value.total,
-      color: DEPARTMENT_COLORS[key] || '#6366f1',
+    const departmentChartData = Array.from(departmentDistribution, ([key, value], index) => ({
+      key, name: formatGroupName(key), ...value, color: CHART_COLORS[index % CHART_COLORS.length],
     }));
 
-    const roleChartData = Object.entries(roleDistribution).map(([key, value]) => ({
-      key,
-      name: value.name,
-      value: value.count,
-      active: value.active,
-      color: ROLE_COLORS[key] || '#3b82f6',
+    const roleChartData = Array.from(roleDistribution, ([key, value], index) => ({
+      key, name: formatGroupName(key), value: value.count, active: value.active,
+      color: CHART_COLORS[index % CHART_COLORS.length],
     }));
 
     return {
@@ -202,7 +133,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
     };
   }, [users]);
 
-  // Compute audit event velocity data 100% dynamically from database collections
+  // Aggregate event data from database records for the selected period.
   const activityEventData = useMemo(() => {
     const actionCounts: Record<string, number> = {};
     activityLogs.forEach((log) => {
@@ -217,73 +148,41 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
 
-    const monthsShort = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-    const monthKeys = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
-
-    const monthlyMap: Record<string, { month: string; briefLocks: number; qaAudits: number; approvals: number; uploads: number }> = {};
-    monthKeys.forEach((key, idx) => {
-      monthlyMap[key] = {
-        month: monthsShort[idx],
-        briefLocks: 0,
-        qaAudits: 0,
-        approvals: 0,
-        uploads: 0,
-      };
+    const monthlyMap = new Map<string, { month: string; briefLocks: number; qaAudits: number; approvals: number; uploads: number }>();
+    getMonthBuckets(timeRange).forEach(({ key, name }) => {
+      monthlyMap.set(key, { month: name, briefLocks: 0, qaAudits: 0, approvals: 0, uploads: 0 });
     });
 
-    // Populate from real activity logs in database
+    const incrementEvent = (value: string | undefined, field: 'briefLocks' | 'qaAudits' | 'approvals' | 'uploads') => {
+      const timestamp = Date.parse(value || '');
+      if (!Number.isFinite(timestamp)) return;
+      const date = new Date(timestamp);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const bucket = monthlyMap.get(key);
+      if (bucket) bucket[field] += 1;
+    };
+
     activityLogs.forEach((log) => {
-      const ts = log.timestamp || '2026-09-01';
-      const key = ts.substring(0, 7);
-      if (monthlyMap[key]) {
-        if (log.action === 'BRIEF_LOCKED') monthlyMap[key].briefLocks += 1;
-        if (log.action === 'QA_CERTIFIED' || log.action === 'QA_SUBMITTED') monthlyMap[key].qaAudits += 1;
-        if (log.action === 'CLIENT_APPROVED') monthlyMap[key].approvals += 1;
-        if (log.action === 'DELIVERABLE_UPLOADED' || log.action === 'FILE_UPLOADED') monthlyMap[key].uploads += 1;
-      }
+      if (log.action === 'BRIEF_LOCKED') incrementEvent(log.timestamp, 'briefLocks');
     });
+    versions.forEach((version) => incrementEvent(version.uploadedAt, 'uploads'));
+    qaSubmissions.forEach((submission) => incrementEvent(submission.performedAt, 'qaAudits'));
+    approvals.forEach((approval) => incrementEvent(approval.approvedAt, 'approvals'));
 
-    // Populate from versions collection in database
-    versions.forEach((v) => {
-      const ts = v.uploadedAt || '2026-09-01';
-      const key = ts.substring(0, 7);
-      if (monthlyMap[key]) {
-        monthlyMap[key].uploads += 1;
-      }
-    });
-
-    // Populate from QA submissions collection in database
-    qaSubmissions.forEach((q) => {
-      const ts = q.performedAt || '2026-09-01';
-      const key = ts.substring(0, 7);
-      if (monthlyMap[key]) {
-        monthlyMap[key].qaAudits += 1;
-      }
-    });
-
-    // Populate from Approvals collection in database
-    approvals.forEach((a) => {
-      const ts = a.approvedAt || '2026-09-01';
-      const key = ts.substring(0, 7);
-      if (monthlyMap[key]) {
-        monthlyMap[key].approvals += 1;
-      }
-    });
-
-    const monthlyEvents = Object.values(monthlyMap);
+    const monthlyEvents = Array.from(monthlyMap.values());
 
     return { topActions, monthlyEvents };
-  }, [activityLogs, versions, qaSubmissions, approvals]);
+  }, [activityLogs, approvals, qaSubmissions, timeRange, versions]);
 
   // Total calculated requests
   const totalRequestsCount = useMemo(() => {
-    return monthlyRequestsData.reduce((acc, curr) => acc + curr.total, 0);
+    return monthlyRequestsData.reduce((acc, curr) => acc + Number(curr.total), 0);
   }, [monthlyRequestsData]);
 
   // Calculate highest month
   const peakMonth = useMemo(() => {
-    if (monthlyRequestsData.length === 0) return { month: 'Sep 2026', total: 0 };
-    return [...monthlyRequestsData].sort((a, b) => b.total - a.total)[0];
+    if (monthlyRequestsData.length === 0) return { month: 'No period', total: 0 };
+    return [...monthlyRequestsData].sort((a, b) => Number(b.total) - Number(a.total))[0];
   }, [monthlyRequestsData]);
 
   // Recharts Custom Tooltip Formatter
@@ -377,7 +276,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              YTD 2026
+              Year to date
             </button>
           </div>
         </div>
@@ -396,8 +295,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
               {totalRequestsCount}
             </span>
             <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1 font-mono">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18.4%</span>
+              <span>{timeRange === 'ytd' ? 'Year to date' : timeRange === '6m' ? 'Last 6 months' : 'Last 12 months'}</span>
             </span>
           </div>
           <p className="text-[11px] text-slate-400">
@@ -439,7 +337,7 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
             </span>
           </div>
           <p className="text-[11px] text-slate-400">
-            Highest demand period across all 4 departments.
+            Highest demand month in the selected period.
           </p>
         </div>
 
@@ -454,11 +352,11 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
               {activityLogs.length}
             </span>
             <span className="text-xs font-mono text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full">
-              100% Logged
+              Loaded records
             </span>
           </div>
           <p className="text-[11px] text-slate-400">
-            Immutable audit log stream records in database.
+            Activity records currently loaded from the database.
           </p>
         </div>
       </div>
@@ -512,22 +410,6 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
                     <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
                     <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0} />
                   </linearGradient>
-                  <linearGradient id="gradMarketing" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="gradTravel" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="gradRAM" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="gradDev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
-                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickLine={false} />
@@ -546,42 +428,18 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
                   fillOpacity={1}
                   fill="url(#gradTotal)"
                 />
-                <Area
-                  type="monotone"
-                  dataKey="marketing"
-                  name="Marketing & Creative"
-                  stroke="#6366f1"
-                  strokeWidth={1.5}
-                  fillOpacity={1}
-                  fill="url(#gradMarketing)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="incentive_travel"
-                  name="Incentive Travel"
-                  stroke="#06b6d4"
-                  strokeWidth={1.5}
-                  fillOpacity={1}
-                  fill="url(#gradTravel)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="online_ram"
-                  name="Online RAM & Rewards"
-                  stroke="#f59e0b"
-                  strokeWidth={1.5}
-                  fillOpacity={1}
-                  fill="url(#gradRAM)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="development"
-                  name="Systems Engineering"
-                  stroke="#10b981"
-                  strokeWidth={1.5}
-                  fillOpacity={1}
-                  fill="url(#gradDev)"
-                />
+                  {departmentKeys.map((departmentId, index) => (
+                    <Area
+                      key={departmentId}
+                      type="monotone"
+                      dataKey={departmentId}
+                      name={formatGroupName(departmentId)}
+                      stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                      strokeWidth={1.5}
+                      fillOpacity={0.12}
+                      fill={CHART_COLORS[index % CHART_COLORS.length]}
+                    />
+                  ))}
               </AreaChart>
             ) : (
               <BarChart data={monthlyRequestsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -593,10 +451,15 @@ export const SystemUsageAnalyticsPanel: React.FC = () => {
                   wrapperStyle={{ paddingTop: '10px', fontSize: '11px', color: '#94a3b8' }}
                   iconType="square"
                 />
-                <Bar dataKey="marketing" name="Marketing" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="incentive_travel" name="Travel" stackId="a" fill="#06b6d4" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="online_ram" name="Online RAM" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="development" name="Systems Dev" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                {departmentKeys.map((departmentId, index) => (
+                  <Bar
+                    key={departmentId}
+                    dataKey={departmentId}
+                    name={formatGroupName(departmentId)}
+                    stackId="a"
+                    fill={CHART_COLORS[index % CHART_COLORS.length]}
+                  />
+                ))}
               </BarChart>
             )}
           </ResponsiveContainer>

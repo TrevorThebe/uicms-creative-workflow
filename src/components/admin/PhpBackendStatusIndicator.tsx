@@ -21,7 +21,7 @@ export const PhpBackendStatusIndicator: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [autoPoll, setAutoPoll] = useState<boolean>(true);
   const [checkCount, setCheckCount] = useState<number>(0);
-  const [dbStats, setDbStats] = useState<{ tableCount?: number; userCount?: number; projectCount?: number } | null>(null);
+  const [backendInfo, setBackendInfo] = useState<{ phpVersion?: string; environment?: string; databaseConnected?: boolean } | null>(null);
 
   const checkBackendStatus = useCallback(async () => {
     setStatus('checking');
@@ -31,7 +31,7 @@ export const PhpBackendStatusIndicator: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      const response = await fetch('/php-backend/api/data.php', {
+      const response = await fetch('/php-backend/api/index.php', {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -51,46 +51,24 @@ export const PhpBackendStatusIndicator: React.FC = () => {
         return;
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        // Fallback check if response text is non-json
-        const text = await response.text();
-        if (text.includes('uicms_workflow') || text.includes('success')) {
-          setStatus('connected');
-          setLatency(latencyMs);
-          setErrorMessage(null);
-          setLastChecked(new Date());
-          return;
-        }
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.status !== 'online' || payload?.database_connected !== true) {
         setStatus('disconnected');
         setLatency(null);
-        setErrorMessage('Invalid Content-Type returned from PHP API (Expected application/json)');
+        setErrorMessage(payload?.message || 'PHP Backend API returned unsuccessful payload status.');
         setLastChecked(new Date());
-        return;
-      }
-
-      const payload = await response.json().catch(() => null);
-
-      if (payload && (payload.status === 'success' || payload.data || payload.users)) {
-        const data = payload.data || payload;
-        const usersArr = Array.isArray(data.users) ? data.users : [];
-        const projectsArr = Array.isArray(data.projects) ? data.projects : [];
-
+        setBackendInfo(null);
+      } else {
         setStatus('connected');
         setLatency(latencyMs);
         setErrorMessage(null);
         setLastChecked(new Date());
         setCheckCount((prev) => prev + 1);
-        setDbStats({
-          tableCount: 14,
-          userCount: usersArr.length,
-          projectCount: projectsArr.length,
+        setBackendInfo({
+          phpVersion: payload.php_version,
+          environment: payload.environment,
+          databaseConnected: payload.database_connected,
         });
-      } else {
-        setStatus('disconnected');
-        setLatency(null);
-        setErrorMessage(payload?.message || 'PHP Backend API returned unsuccessful payload status.');
-        setLastChecked(new Date());
       }
     } catch (err: any) {
       const elapsed = Math.round(performance.now() - startTime);
@@ -146,7 +124,7 @@ export const PhpBackendStatusIndicator: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Verifies active REST API communication with local phpMyAdmin database (<code>uicms_workflow</code>).
+              Checks the PHP health endpoint and its live MySQL connection status.
             </p>
           </div>
         </div>
@@ -235,7 +213,7 @@ export const PhpBackendStatusIndicator: React.FC = () => {
             <p className="text-xs text-slate-200 font-medium leading-relaxed">
               {status === 'connected' && (
                 <>
-                  PHP API endpoint (<code>/php-backend/api/data.php</code>) is active and serving data from MySQL <strong>uicms_workflow</strong>.
+                  PHP API health check passed{backendInfo?.phpVersion ? ` on PHP ${backendInfo.phpVersion}` : ''}.
                 </>
               )}
               {status === 'disconnected' && (
@@ -243,7 +221,7 @@ export const PhpBackendStatusIndicator: React.FC = () => {
                   Unable to communicate with the PHP backend REST API. Check local Apache/MySQL server status.
                 </span>
               )}
-              {status === 'checking' && 'Sending health check ping request to local PHP API...'}
+              {status === 'checking' && 'Checking the PHP API and database connection...'}
             </p>
 
             {errorMessage && (
@@ -292,33 +270,35 @@ export const PhpBackendStatusIndicator: React.FC = () => {
             <Globe className="w-3.5 h-3.5 text-indigo-400" />
             PHP REST Endpoint
           </span>
-          <p className="font-mono text-slate-200 text-xs truncate">/php-backend/api/data.php</p>
+          <p className="font-mono text-slate-200 text-xs truncate">/php-backend/api/index.php</p>
         </div>
 
         <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
           <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 flex items-center gap-1.5">
             <Database className="w-3.5 h-3.5 text-emerald-400" />
-            Target Database
+            Database Connection
           </span>
-          <p className="font-mono text-emerald-300 font-bold text-xs truncate">uicms_workflow (MySQL)</p>
+          <p className="font-mono text-emerald-300 font-bold text-xs truncate">
+            {backendInfo?.databaseConnected ? 'Connected' : 'Not verified'}
+          </p>
         </div>
 
         <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
           <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 flex items-center gap-1.5">
             <Server className="w-3.5 h-3.5 text-purple-400" />
-            Tables Hydrated
+            PHP Version
           </span>
           <p className="font-mono text-slate-200 text-xs font-semibold">
-            {dbStats?.tableCount ?? 14} Relational Tables
+            {backendInfo?.phpVersion || '—'}
           </p>
         </div>
 
         <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
           <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
-            Sync Method
+            Environment
           </span>
-          <p className="font-mono text-slate-200 text-xs truncate">PDO JSON Bridge / REST</p>
+          <p className="font-mono text-slate-200 text-xs truncate">{backendInfo?.environment || '—'}</p>
         </div>
       </div>
     </div>

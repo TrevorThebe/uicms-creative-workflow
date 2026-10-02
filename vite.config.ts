@@ -1,12 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { Readable } from 'node:stream';
 import path from 'path';
 import fs from 'fs';
 import { defineConfig, Plugin } from 'vite';
 
 function phpBackendPlugin(): Plugin {
-  const dbFilePath = path.resolve(__dirname, '.database_snapshot.json');
-
   return {
     name: 'php-backend-mock-server',
     configureServer(server) {
@@ -47,9 +46,11 @@ function phpBackendPlugin(): Plugin {
             if (req.headers['content-type']) {
               headers['content-type'] = req.headers['content-type'] as string;
             }
+            if (req.headers.cookie) headers.cookie = req.headers.cookie;
+            if (req.headers.origin) headers.origin = req.headers.origin;
 
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 1000);
+            const timeout = setTimeout(() => controller.abort(), 30000);
 
             const phpResp = await fetch(fullUrl, {
               method: req.method,
@@ -60,12 +61,19 @@ function phpBackendPlugin(): Plugin {
 
             clearTimeout(timeout);
 
-            if (phpResp.ok) {
+            if (phpResp.status) {
               const contentType = phpResp.headers.get('content-type') || 'application/json';
-              const text = await phpResp.text();
               res.statusCode = phpResp.status;
               res.setHeader('Content-Type', contentType);
-              res.end(text);
+              const contentLength = phpResp.headers.get('content-length');
+              if (contentLength) res.setHeader('Content-Length', contentLength);
+              const setCookie = phpResp.headers.get('set-cookie');
+              if (setCookie) res.setHeader('Set-Cookie', setCookie);
+              if (phpResp.body) {
+                Readable.fromWeb(phpResp.body as any).pipe(res);
+              } else {
+                res.end();
+              }
               return;
             }
           } catch {
@@ -73,49 +81,28 @@ function phpBackendPlugin(): Plugin {
           }
         }
 
-        // Fallback to local snapshot if no external local PHP backend server responded
+        if (req.url?.startsWith('/php-backend/uploads/')) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          return res.end('Uploaded file not found');
+        }
+
+        if (req.url?.startsWith('/php-backend/api/upload.php')) {
+          res.statusCode = 503;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          return res.end(JSON.stringify({ status: 'error', message: 'PHP upload backend unavailable' }));
+        }
+
         res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-
-        if (req.method === 'OPTIONS') {
-          res.statusCode = 204;
-          return res.end();
-        }
-
-        if (req.method === 'GET') {
-          try {
-            if (fs.existsSync(dbFilePath)) {
-              const fileContent = fs.readFileSync(dbFilePath, 'utf-8');
-              const json = JSON.parse(fileContent);
-              res.statusCode = 200;
-              return res.end(JSON.stringify({ status: 'success', data: json }));
-            }
-          } catch (e) {
-            console.error('Error reading snapshot:', e);
-          }
-          res.statusCode = 200;
-          return res.end(JSON.stringify({ status: 'success', data: null }));
-        }
-
-        if (req.method === 'POST') {
-          try {
-            const bodyStr = bodyBuffer ? bodyBuffer.toString('utf-8') : '{}';
-            const parsed = JSON.parse(bodyStr || '{}');
-            const dataToSave = parsed.data || parsed;
-            fs.writeFileSync(dbFilePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
-            res.statusCode = 200;
-            return res.end(JSON.stringify({ status: 'success', message: 'Database state persisted successfully' }));
-          } catch (err: any) {
-            res.statusCode = 400;
-            return res.end(JSON.stringify({ status: 'error', message: err.message || 'Invalid JSON' }));
-          }
-        }
-
-        res.statusCode = 405;
-        return res.end(JSON.stringify({ status: 'error', message: 'Method not allowed' }));
+        res.statusCode = 503;
+        return res.end(JSON.stringify({ status: 'offline', message: 'PHP database backend unavailable' }));
       });
+    },
+    closeBundle() {
+      const distDirectory = path.resolve(__dirname, 'dist');
+      for (const fileName of ['database_seed.sql', 'clean_database.sql']) {
+        fs.rmSync(path.join(distDirectory, fileName), { force: true });
+      }
     },
   };
 }

@@ -19,28 +19,34 @@ export const ReportsAnalyticsView: React.FC = () => {
   const totalProjects = projects.length;
   const completedProjects = projects.filter((p) => p.stage === 'ARCHIVE' || p.status === 'completed').length;
   const overdueProjects = projects.filter((p) => p.status === 'overdue').length;
-  const onTimeRate = totalProjects > 0 ? Math.round(((totalProjects - overdueProjects) / totalProjects) * 1000) / 10 : 100;
+  const onTimeRate = totalProjects > 0 ? Math.round(((totalProjects - overdueProjects) / totalProjects) * 1000) / 10 : null;
 
   const totalQAs = qaSubmissions.length;
   const passedQAs = qaSubmissions.filter((q) => q.result === 'PASS' || q.result === 'PASS_WITH_NOTES').length;
-  const qaPassRate = totalQAs > 0 ? Math.round((passedQAs / totalQAs) * 100) : 100;
+  const qaPassRate = totalQAs > 0 ? Math.round((passedQAs / totalQAs) * 100) : null;
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === 'complete').length;
 
-  // Compute average turnaround days from database projects
-  const completedList = projects.filter((p) => p.stage === 'ARCHIVE' || p.stage === 'RELEASE_PUBLISH' || p.status === 'completed');
-  let avgDays = 3.8;
-  if (completedList.length > 0) {
-    let totalDaysSum = 0;
-    completedList.forEach((p) => {
-      const created = new Date(p.createdAt || '2026-09-01').getTime();
-      const rel = new Date(p.releaseDate || '2026-09-15').getTime();
-      const diffDays = Math.max(1, Math.round((rel - created) / (1000 * 60 * 60 * 24)));
-      totalDaysSum += diffDays;
-    });
-    avgDays = Math.round((totalDaysSum / completedList.length) * 10) / 10;
-  }
+  const completedDurations = projects
+    .filter((project) => project.stage === 'ARCHIVE' || project.stage === 'RELEASE_PUBLISH' || project.status === 'completed')
+    .map((project) => ({
+      created: Date.parse(project.createdAt || ''),
+      released: Date.parse(project.releaseDate || ''),
+    }))
+    .filter(({ created, released }) => Number.isFinite(created) && Number.isFinite(released))
+    .map(({ created, released }) => Math.max(1, Math.round((released - created) / (1000 * 60 * 60 * 24))));
+  const avgDays = completedDurations.length
+    ? Math.round((completedDurations.reduce((sum, days) => sum + days, 0) / completedDurations.length) * 10) / 10
+    : null;
+
+  const departmentStats = Array.from(new Set(projects.map((project) => project.departmentId || 'unassigned')))
+    .map((departmentId, index) => ({
+      departmentId,
+      count: projects.filter((project) => (project.departmentId || 'unassigned') === departmentId).length,
+      color: ['bg-indigo-500', 'bg-sky-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500'][index % 5],
+    }));
+  const qaResults = Array.from(new Set(qaSubmissions.map((submission) => submission.result)));
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-150">
@@ -68,8 +74,8 @@ export const ReportsAnalyticsView: React.FC = () => {
             <span>On-Time Delivery SLA</span>
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-3xl font-bold text-white tracking-tight">{onTimeRate}%</div>
-          <p className="text-[11px] text-emerald-400 font-medium">↑ +2.1% improvement this quarter</p>
+          <div className="text-3xl font-bold text-white tracking-tight">{onTimeRate === null ? '—' : `${onTimeRate}%`}</div>
+          <p className="text-[11px] text-slate-400 font-medium">{overdueProjects} overdue of {totalProjects} projects</p>
         </div>
 
         <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
@@ -77,7 +83,7 @@ export const ReportsAnalyticsView: React.FC = () => {
             <span>Pre-Flight QA Pass Rate</span>
             <ShieldCheck className="w-4 h-4 text-indigo-400" />
           </div>
-          <div className="text-3xl font-bold text-white tracking-tight">{qaPassRate}%</div>
+          <div className="text-3xl font-bold text-white tracking-tight">{qaPassRate === null ? '—' : `${qaPassRate}%`}</div>
           <p className="text-[11px] text-slate-400 font-medium">
             {passedQAs} passed of {totalQAs} total inspections
           </p>
@@ -88,7 +94,7 @@ export const ReportsAnalyticsView: React.FC = () => {
             <span>Avg Turnaround Cycle</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-3xl font-bold text-white tracking-tight">{avgDays} Days</div>
+          <div className="text-3xl font-bold text-white tracking-tight">{avgDays === null ? '—' : `${avgDays} Days`}</div>
           <p className="text-[11px] text-slate-400 font-medium">Intake to Final Release Delivery</p>
         </div>
 
@@ -99,7 +105,7 @@ export const ReportsAnalyticsView: React.FC = () => {
           </div>
           <div className="text-3xl font-bold text-white tracking-tight">{totalTasks}</div>
           <p className="text-[11px] text-slate-400 font-medium">
-            {completedTasks} completed ({Math.round((completedTasks / totalTasks) * 100)}%)
+            {completedTasks} completed ({totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0}%)
           </p>
         </div>
       </div>
@@ -112,35 +118,21 @@ export const ReportsAnalyticsView: React.FC = () => {
             Volume by Department
           </h3>
           <div className="space-y-3 pt-1">
-            {[
-              {
-                name: 'Marketing & Creative Campaigns',
-                count: projects.filter((p) => p.departmentId === 'marketing').length,
-                color: 'bg-indigo-500',
-              },
-              {
-                name: 'Incentive Travel Document Packs',
-                count: projects.filter((p) => p.departmentId === 'incentive_travel').length,
-                color: 'bg-sky-500',
-              },
-              {
-                name: 'Online / RAM Digital Marketing',
-                count: projects.filter((p) => p.departmentId === 'online_ram').length,
-                color: 'bg-purple-500',
-              },
-            ].map((d, i) => {
-              const pct = Math.round((d.count / totalProjects) * 100);
+            {departmentStats.length === 0 ? (
+              <p className="text-xs text-slate-400">No project records are available.</p>
+            ) : departmentStats.map((department) => {
+              const pct = totalProjects ? Math.round((department.count / totalProjects) * 100) : 0;
               return (
-                <div key={i} className="space-y-1 text-xs">
+                <div key={department.departmentId} className="space-y-1 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white">{d.name}</span>
+                    <span className="font-semibold text-white">{department.departmentId.replace(/[_-]+/g, ' ')}</span>
                     <span className="font-mono text-slate-400">
-                      {d.count} projects ({pct}%)
+                      {department.count} projects ({pct}%)
                     </span>
                   </div>
                   <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
                     <div
-                      className={`h-full ${d.color} rounded-full transition-all duration-500`}
+                      className={`h-full ${department.color} rounded-full transition-all duration-500`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -155,26 +147,18 @@ export const ReportsAnalyticsView: React.FC = () => {
           <h3 className="text-sm font-bold text-white uppercase tracking-wider">
             Pre-flight QA Verification Audits
           </h3>
-          <div className="space-y-3 pt-1">
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-300 font-semibold">Zero-Defect Print Compliance</span>
-                <span className="font-bold text-emerald-400">100% CMYK & Bleed Verified</span>
-              </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                All travel document brochures and event collateral strictly audited for crop marks, 3mm bleed boundaries, 300DPI vector art, and spot-UV varnishes before client transmission.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-300 font-semibold">Digital Responsive & RAM Validation</span>
-                <span className="font-bold text-indigo-300">100% Tag & Legal Certified</span>
-              </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                All RAM EDM HTML email tables tested across iOS Mail, Outlook 2024, and Android Gmail with verified UTM tracking tags.
-              </p>
-            </div>
+          <div className="space-y-2 pt-1">
+            {qaResults.length === 0 ? (
+              <p className="text-xs text-slate-400">No QA submissions are available.</p>
+            ) : qaResults.map((result) => {
+              const count = qaSubmissions.filter((submission) => submission.result === result).length;
+              return (
+                <div key={result} className="flex items-center justify-between rounded-lg bg-slate-950 p-3 text-xs">
+                  <span className="text-slate-300">{result.replace(/[_-]+/g, ' ')}</span>
+                  <span className="font-mono font-semibold text-white">{count}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

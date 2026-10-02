@@ -18,11 +18,9 @@ import { UploadLocalDeliverableModal } from '../common/UploadLocalDeliverableMod
 import { DeliverablePreviewModal, PreviewableFile } from '../common/DeliverablePreviewModal';
 import {
   triggerLocalDownload,
-  fileToDataUrl,
   formatBytes,
   isImageFile,
   isPdfFile,
-  saveLocalFileBlob,
 } from '../../utils/localFileStore';
 import {
   AlertCircle,
@@ -137,7 +135,7 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
   const [isReadingVersionFile, setIsReadingVersionFile] = useState(false);
   const [versionIsDragging, setVersionIsDragging] = useState(false);
   const [newVersionNum, setNewVersionNum] = useState('V1.0');
-  const [newVersionTitle, setNewVersionTitle] = useState('Initial Creative Deliverable');
+  const [newVersionTitle, setNewVersionTitle] = useState('');
   const [newVersionNotes, setNewVersionNotes] = useState('');
   const [newVersionUrl, setNewVersionUrl] = useState('');
 
@@ -246,26 +244,32 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
   };
 
   const handleVersionFileSelect = async (file: File) => {
-    setVersionSelectedFile(file);
-    if (!newVersionTitle || newVersionTitle === 'Initial Creative Deliverable') {
-      setNewVersionTitle(file.name.replace(/\.[^/.]+$/, ''));
-    }
     setIsReadingVersionFile(true);
     try {
-      const dataUrl = await fileToDataUrl(file);
-      setNewVersionUrl(dataUrl);
-    } catch (err) {
-      console.error('Failed to read deliverable file:', err);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', 'file');
+      const response = await fetch('/php-backend/api/upload.php', { method: 'POST', body: formData });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success' || !result.url) {
+        throw new Error(result.message || 'Deliverable upload failed.');
+      }
+      setVersionSelectedFile(file);
+      if (!newVersionTitle.trim()) setNewVersionTitle(file.name.replace(/\.[^/.]+$/, ''));
+      setNewVersionUrl(result.url);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'The deliverable could not be uploaded.');
     } finally {
       setIsReadingVersionFile(false);
     }
   };
 
   const handleUploadVersion = async () => {
-    if (!newVersionTitle.trim()) return;
-    const finalUrl =
-      newVersionUrl ||
-      `https://files.uicms.com/proofs/${encodeURIComponent(newVersionTitle.trim())}.pdf`;
+    if (!newVersionTitle.trim() || !versionSelectedFile || !newVersionUrl) {
+      alert('Upload a deliverable file and enter its title.');
+      return;
+    }
+    const finalUrl = newVersionUrl;
 
     const createdVersion = uploadDeliverableVersion({
       projectId: project.id,
@@ -276,16 +280,6 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
       notes: newVersionNotes,
       uploadedBy: currentUser.id,
     });
-
-    if (finalUrl.startsWith('data:') && createdVersion?.id) {
-      await saveLocalFileBlob(
-        createdVersion.id,
-        versionSelectedFile?.name || `${newVersionTitle}.pdf`,
-        versionSelectedFile?.type || 'application/pdf',
-        versionSelectedFile ? formatBytes(versionSelectedFile.size) : '2.4 MB',
-        finalUrl
-      );
-    }
 
     setShowUploadVersionModal(false);
     setNewVersionNotes('');
@@ -1594,13 +1588,13 @@ export const ProjectDetailWorkspace: React.FC<ProjectDetailWorkspaceProps> = ({
                       <span className="text-indigo-400 underline">browse</span>
                     </p>
                     <span className="text-[10px] text-slate-400 font-mono">
-                      PDF, PNG, JPG, SVG, MP4, ZIP
+                      PDF, PNG, JPG, GIF, WebP, DOCX, XLSX, ZIP, MP4
                     </span>
                   </div>
                 ) : (
                   <div className="p-3 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      {newVersionUrl.startsWith('data:image/') ? (
+                      {versionSelectedFile.type.startsWith('image/') ? (
                         <img
                           src={newVersionUrl}
                           alt="Deliverable thumbnail"

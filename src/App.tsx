@@ -25,7 +25,7 @@ import { AuthModal } from './components/auth/AuthModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
 
 const AppContent: React.FC = () => {
-  const { activeNavSection, setActiveNavSection, selectedProjectId, setSelectedProjectId } = useApp();
+  const { activeNavSection, setActiveNavSection, selectedProjectId, setSelectedProjectId, databaseReady, isAuthenticated } = useApp();
   const [projectInitialTab, setProjectInitialTab] = useState<string>('overview');
 
   const handleOpenProject = (id: string, initialTab: string = 'overview') => {
@@ -36,6 +36,22 @@ const AppContent: React.FC = () => {
   const handleCloseProject = () => {
     setSelectedProjectId(null);
   };
+
+  if (!databaseReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-300 flex items-center justify-center" role="status">
+        Restoring your session...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100">
+        <AuthModal />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
