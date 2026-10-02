@@ -82,6 +82,18 @@ export const AuthModal: React.FC = () => {
     setForgotStep(1);
   };
 
+  // Quick 1-Click Login for Demo & Testing
+  const handleQuickLogin = async (email: string, pass: string = 'Password123!') => {
+    setLoginEmail(email);
+    setLoginPassword(pass);
+    resetMessages();
+    setIsLoading(true);
+    const res = await loginUser(email, pass);
+    setIsLoading(false);
+    if (!res.success) setErrorMessage(res.error || 'Failed to authenticate.');
+    else setIsAuthModalOpen(false);
+  };
+
   // 1. Handle Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -386,6 +398,52 @@ export const AuthModal: React.FC = () => {
                   <Lock className="w-3.5 h-3.5" />
                   <span>{isLoading ? 'Authenticating...' : 'Sign In to Workspace'}</span>
                 </button>
+
+                {/* Quick 1-Click Demo Profiles */}
+                <div className="pt-2 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-slate-400">Quick 1-Click Sign In (Password: Password123!)</span>
+                    <span className="text-[10px] text-indigo-400 font-mono">1-Click</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleQuickLogin('admin@uicms.local')}
+                      className="px-2.5 py-2 rounded-lg bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 text-left transition-all group"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 group-hover:text-indigo-300">Alex Rivera (Super Admin)</div>
+                      <div className="text-[10px] text-slate-500 font-mono truncate">admin@uicms.local</div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleQuickLogin('trevztm@gmail.com')}
+                      className="px-2.5 py-2 rounded-lg bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 text-left transition-all group"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 group-hover:text-indigo-300">Trev (Super Admin)</div>
+                      <div className="text-[10px] text-slate-500 font-mono truncate">trevztm@gmail.com</div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleQuickLogin('sarah.chen@uicms.local')}
+                      className="px-2.5 py-2 rounded-lg bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 text-left transition-all group"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 group-hover:text-indigo-300">Sarah Chen (Manager)</div>
+                      <div className="text-[10px] text-slate-500 font-mono truncate">sarah.chen@uicms.local</div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleQuickLogin('bradley.cooper@discovery.co.za')}
+                      className="px-2.5 py-2 rounded-lg bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 text-left transition-all group"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 group-hover:text-indigo-300">Bradley Cooper (Client)</div>
+                      <div className="text-[10px] text-slate-500 font-mono truncate">bradley.cooper@...</div>
+                    </button>
+                  </div>
+                </div>
               </form>
             </div>
           )}

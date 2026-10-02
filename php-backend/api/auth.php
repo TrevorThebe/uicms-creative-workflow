@@ -65,6 +65,8 @@ if ($db !== null) {
             $seedHash = password_hash('Password123!', PASSWORD_BCRYPT);
             $ins = $db->prepare("INSERT INTO `users` (`id`, `name`, `email`, `personal_email`, `password`, `role`, `role_title`, `department_id`, `avatar`, `active`, `is_suspended`, `workload_count`) VALUES 
             ('usr-admin-01', 'Alex Rivera', 'admin@uicms.local', 'alex.rivera@personal.com', :h, 'super_admin', 'Executive Creative Director & Super Admin', 'marketing', '', 1, 0, 0),
+            ('usr-trevztm', 'Trev', 'trevztm@gmail.com', 'trevztm@gmail.com', :h, 'super_admin', 'System Super Administrator', 'marketing', '', 1, 0, 0),
+            ('usr-admin', 'Eleanor Vance', 'eleanor.vance@uicms.com', 'eleanor.vance@gmail.com', :h, 'super_admin', 'Chief Operations & Systems Administrator', 'marketing', '', 1, 0, 0),
             ('usr-mgr-01', 'Sarah Chen', 'sarah.chen@uicms.local', 'sarah.chen@personal.com', :h, 'department_manager', 'Creative Operations Manager', 'marketing', '', 1, 0, 0),
             ('usr-des-01', 'Marcus Vance', 'marcus.vance@uicms.local', 'marcus.vance@personal.com', :h, 'designer', 'Senior Visual Designer', 'marketing', '', 1, 0, 0)");
             $ins->execute([':h' => $seedHash]);

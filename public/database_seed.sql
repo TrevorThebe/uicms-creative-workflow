@@ -359,6 +359,8 @@ INSERT INTO `users` (
   `active`, `is_suspended`, `workload_count`
 ) VALUES 
 ('usr-admin-01', 'Alex Rivera', 'admin@uicms.local', 'alex.rivera@personal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'super_admin', 'Executive Creative Director & Super Admin', 'marketing', '', 1, 0, 0),
+('usr-trevztm', 'Trev', 'trevztm@gmail.com', 'trevztm@gmail.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'super_admin', 'System Super Administrator', 'marketing', '', 1, 0, 0),
+('usr-admin', 'Eleanor Vance', 'eleanor.vance@uicms.com', 'eleanor.vance@gmail.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'super_admin', 'Chief Operations & Systems Administrator', 'marketing', '', 1, 0, 0),
 ('usr-mgr-01', 'Sarah Chen', 'sarah.chen@uicms.local', 'sarah.chen@personal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'department_manager', 'Creative Operations Manager', 'marketing', '', 1, 0, 0),
 ('usr-des-01', 'Marcus Vance', 'marcus.vance@uicms.local', 'marcus.vance@personal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'designer', 'Senior Visual Designer', 'marketing', '', 1, 0, 0)
 ON DUPLICATE KEY UPDATE `password` = VALUES(`password`);
