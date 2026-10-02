@@ -49,30 +49,62 @@ class Database {
 
     public function getConnection(): ?PDO {
         $this->conn = null;
-        try {
-            $dsn = "mysql:host={$this->host};port={$this->port};dbname={$this->db_name};charset=utf8mb4";
-            $options = [
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES   => false,
-                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
-            ];
-            $this->conn = new PDO($dsn, $this->username, $this->password, $options);
-        } catch (PDOException $e) {
-            http_response_code(500);
-            $msg = "Database connection error to '{$this->db_name}' on {$this->host}:{$this->port} (user: {$this->username}): " . $e->getMessage();
-            echo json_encode([
-                "status" => "error",
-                "message" => $msg,
-                "database_name" => $this->db_name,
-                "host" => $this->host,
-                "port" => $this->port,
-                "user" => $this->username
-            ], JSON_UNESCAPED_SLASHES);
-            exit;
+        $passwordsToTry = [$this->password];
+        // If DB_PASS was not explicitly set in environment, try empty password first, then 'root'
+        if (getenv('DB_PASS') === false && $this->username === 'root') {
+            if (!in_array('', $passwordsToTry, true)) $passwordsToTry[] = '';
+            if (!in_array('root', $passwordsToTry, true)) $passwordsToTry[] = 'root';
         }
 
-        return $this->conn;
+        $lastException = null;
+        foreach ($passwordsToTry as $pwd) {
+            try {
+                $dsn = "mysql:host={$this->host};port={$this->port};dbname={$this->db_name};charset=utf8mb4";
+                $options = [
+                    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES   => false,
+                    PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
+                ];
+                $this->conn = new PDO($dsn, $this->username, $pwd, $options);
+                $this->password = $pwd;
+                return $this->conn;
+            } catch (PDOException $e) {
+                $lastException = $e;
+                // If unknown database error (1049), attempt to create the database automatically
+                if ((int)$e->getCode() === 1049 || str_contains($e->getMessage(), 'Unknown database') || str_contains($e->getMessage(), '1049')) {
+                    try {
+                        $adminDsn = "mysql:host={$this->host};port={$this->port};charset=utf8mb4";
+                        $adminConn = new PDO($adminDsn, $this->username, $pwd, [
+                            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+                        ]);
+                        $adminConn->exec("CREATE DATABASE IF NOT EXISTS `{$this->db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                        unset($adminConn);
+
+                        // Retry connecting with database selected
+                        $this->conn = new PDO($dsn, $this->username, $pwd, $options);
+                        $this->password = $pwd;
+                        return $this->conn;
+                    } catch (Throwable $dbCreateEx) {
+                        // Could not auto-create database, proceed to next password attempt or report
+                        $lastException = $dbCreateEx;
+                    }
+                }
+            }
+        }
+
+        http_response_code(500);
+        $errMsg = $lastException ? $lastException->getMessage() : 'Unknown PDO connection error';
+        $msg = "Database connection error to '{$this->db_name}' on {$this->host}:{$this->port} (user: {$this->username}): " . $errMsg;
+        echo json_encode([
+            "status" => "error",
+            "message" => $msg,
+            "database_name" => $this->db_name,
+            "host" => $this->host,
+            "port" => $this->port,
+            "user" => $this->username
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
     }
 }
 
