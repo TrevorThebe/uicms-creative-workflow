@@ -208,6 +208,10 @@ export const AuthModal: React.FC = () => {
     }
   };
 
+  if (isAuthenticated && !isAuthModalOpen) {
+    return null;
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
       <div className="relative w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">

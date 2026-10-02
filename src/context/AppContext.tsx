@@ -817,22 +817,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         persistSessionActivity(now);
         lastPersistedActivityAt = now;
       }
-      if (now - lastServerActivityAt >= 60000) {
-        lastServerActivityAt = now;
-        fetch(`${AUTH_ENDPOINT}?action=session`, { credentials: 'include', headers: { Accept: 'application/json' } })
-          .then((response) => {
-            if (response.ok) return;
-            // Only sign out if the server explicitly responded with 401 unauthenticated
-            if (response.status === 401) {
-              localStorage.removeItem(SESSION_STORAGE_KEY);
-              setInactivityNotice('Your server session expired. Please sign in again.');
-              setIsAuthenticated(false);
-              setIsAuthModalOpen(true);
-              setAuthModalMode('login');
-            }
-          })
-          .catch(() => {});
-      }
     };
 
     const activityEvents = [

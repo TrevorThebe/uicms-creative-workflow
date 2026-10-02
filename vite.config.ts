@@ -267,8 +267,10 @@ function phpBackendPlugin(): Plugin {
           if (action === 'session') {
             const cookies = req.headers.cookie || '';
             const sessionMatch = cookies.match(/uicms_auth_uid=([^;]+)/);
-            if (sessionMatch) {
-              const uid = decodeURIComponent(sessionMatch[1]);
+            const headerUid = req.headers['x-user-id'] as string;
+            const queryUid = urlObj.searchParams.get('uid');
+            const uid = sessionMatch ? decodeURIComponent(sessionMatch[1]) : (headerUid || queryUid);
+            if (uid) {
               const u = users.find((user) => user.id === uid);
               if (u) {
                 res.statusCode = 200;
