@@ -29,24 +29,8 @@ import {
   deleteLocalFileBlob,
 } from '../utils/localFileStore';
 import {
-  INITIAL_USERS,
-  INITIAL_PROJECTS,
-  INITIAL_TASKS,
-  INITIAL_CLIENTS,
-  INITIAL_APPROVALS,
-  INITIAL_FEEDBACK,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_CHAT_MESSAGES,
-  INITIAL_ACTIVITY_LOGS,
-  INITIAL_FILES,
-  INITIAL_VERSIONS,
-  INITIAL_QA_SUBMISSIONS,
-  INITIAL_ADMIN_CONFIG,
-} from '../data/initialData';
-import {
   isPasswordHashed,
   hashPasswordSync,
-  verifyPassword,
 } from '../utils/security';
 const EMPTY_USER = {} as User;
 
@@ -760,21 +744,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActivityLogs(nextState.activityLogs);
         setClients(nextState.clients);
         setAdminConfig(nextState.adminConfig);
-      } else {
-        // Fallback initial dataset if PHP database endpoint is unreachable
-        setUsers(INITIAL_USERS);
-        setProjects(INITIAL_PROJECTS);
-        setTasks(INITIAL_TASKS);
-        setFiles(INITIAL_FILES);
-        setVersions(INITIAL_VERSIONS);
-        setQaSubmissions(INITIAL_QA_SUBMISSIONS);
-        setApprovals(INITIAL_APPROVALS);
-        setFeedbackItems(INITIAL_FEEDBACK);
-        setNotifications(INITIAL_NOTIFICATIONS);
-        setChatMessages(INITIAL_CHAT_MESSAGES);
-        setActivityLogs(INITIAL_ACTIVITY_LOGS);
-        setClients(INITIAL_CLIENTS);
-        setAdminConfig(INITIAL_ADMIN_CONFIG);
       }
 
       // 2. Check for active server-side session or active client-side session
@@ -2330,32 +2299,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       departmentId: userData.departmentId,
       avatar: userData.avatar,
     });
-
-    let newUser: User;
-    if (result.success && result.user) {
-      newUser = result.user as User;
-    } else {
-      // Local registration fallback
-      const existing = users.find((u) => u.email.trim().toLowerCase() === cleanEmail);
-      if (existing) {
-        return { success: false, error: 'An account with this email address already exists.' };
-      }
-      newUser = {
-        id: `usr-${Date.now().toString(36)}`,
-        name: userData.name.trim(),
-        email: cleanEmail,
-        password: hashPasswordSync(userData.password),
-        role: userData.role,
-        roleTitle: userData.roleTitle || 'Creative Specialist',
-        departmentId: userData.departmentId,
-        avatar: userData.avatar || '',
-        active: true,
-        isSuspended: false,
-        workloadCount: 0,
+    if (!result.success || !result.user) {
+      return {
+        success: false,
+        error: result.error || 'Registration failed. Could not write user to database.',
       };
-      setUsers((prev) => [newUser, ...prev]);
     }
 
+    const newUser = result.user as User;
     const safeUser: User = { ...newUser };
     delete (safeUser as any).password;
 
@@ -2382,47 +2333,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; error?: string; user?: User }> => {
     const cleanEmail = email.trim().toLowerCase();
     const result = await postAuthAction('login', { email: cleanEmail, password });
-    let authenticatedUser: User | null = null;
-
-    if (result.success && result.user) {
-      authenticatedUser = result.user as User;
-    } else {
-      // Offline fallback: Check against loaded database users or seed accounts
-      const candidate =
-        users.find(
-          (u) =>
-            u.email.trim().toLowerCase() === cleanEmail ||
-            (u.personalEmail && u.personalEmail.trim().toLowerCase() === cleanEmail)
-        ) ||
-        INITIAL_USERS.find(
-          (u) =>
-            u.email.trim().toLowerCase() === cleanEmail ||
-            (u.personalEmail && u.personalEmail.trim().toLowerCase() === cleanEmail)
-        );
-
-      if (candidate) {
-        if (candidate.isSuspended) {
-          return {
-            success: false,
-            error: `This account is suspended: ${candidate.suspensionReason || 'Please contact system administrator.'}`,
-          };
-        }
-        if (candidate.active === false) {
-          return { success: false, error: 'This user account is inactive. Please contact manager.' };
-        }
-        if (verifyPassword(password, candidate.password)) {
-          authenticatedUser = candidate;
-        } else {
-          return { success: false, error: 'Invalid email address or password.' };
-        }
-      } else {
-        return {
-          success: false,
-          error: result.error || 'Invalid email address or password.',
-        };
-      }
+    if (!result.success || !result.user) {
+      return {
+        success: false,
+        error: result.error || 'Invalid credentials or database connection failed.',
+      };
     }
 
+    const authenticatedUser = result.user as User;
     const safeUser: User = { ...authenticatedUser };
     delete (safeUser as any).password;
 
@@ -2435,7 +2353,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     lastActivityRef.current = Date.now();
     setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
 
-    // Refresh state from database if available
+    // Refresh dynamic state from database
     const refreshed = await fetchDatabaseState();
     if (refreshed) {
       applyDatabaseState(refreshed);
@@ -2527,28 +2445,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newPassword: string
   ): Promise<{ success: boolean; error?: string; message?: string }> => {
     const result = await postAuthAction('reset-password', { email, token: resetToken, password: newPassword });
-    if (result.success) return { success: true };
-
-    // Fallback: update in-memory user
-    const cleanEmail = email.trim().toLowerCase();
-    const userIdx = users.findIndex(
-      (u) =>
-        u.email.trim().toLowerCase() === cleanEmail ||
-        (u.personalEmail && u.personalEmail.trim().toLowerCase() === cleanEmail)
-    );
-    if (userIdx !== -1) {
-      const hashed = hashPasswordSync(newPassword);
-      setUsers((prev) =>
-        prev.map((u, i) =>
-          i === userIdx
-            ? { ...u, password: hashed, isTempPassword: false, mustChangePassword: false }
-            : u
-        )
-      );
-      return { success: true, message: 'Password reset successfully.' };
+    if (!result.success) {
+      return { success: false, error: result.error || 'Password reset failed in database.' };
     }
-
-    return { success: false, error: result.error || 'User account not found.' };
+    return { success: true, message: result.message || 'Password reset successfully in database.' };
   };
 
   const encryptAllUserPasswords = (): { success: boolean; count: number } => {
