@@ -86,16 +86,9 @@ export const DatabaseSyncManager: React.FC = () => {
   const [uploadFileUrl, setUploadFileUrl] = useState('');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
 
-  // Calculate Local Storage Footprint
+  // Database Sync Mode Footprint
   const calculateStorageSize = () => {
-    try {
-      const data = localStorage.getItem('uicms_workflow_v1_store');
-      if (!data) return '0 KB';
-      const bytes = new Blob([data]).size;
-      return `${(bytes / 1024).toFixed(1)} KB`;
-    } catch {
-      return 'N/A';
-    }
+    return 'Live SQL Direct';
   };
 
   // Export & Trigger JSON Download

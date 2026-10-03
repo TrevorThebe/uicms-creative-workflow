@@ -84,7 +84,6 @@ const DB_DATA_ENDPOINTS = [
   '/php-backend/api/data.php',
 ];
 const AUTH_ENDPOINT = '/php-backend/api/auth.php';
-const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
 const SESSION_STORAGE_KEY = 'uicms_auth_session_v1';
 const SESSION_TIMEOUT_NOTICE_KEY = 'uicms_auth_timeout_notice_v1';
 const INACTIVITY_TIMEOUT_SECONDS = 60 * 60; // 60 minutes session duration
@@ -774,6 +773,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAdminConfig(nextState.adminConfig);
       }
 
+      // Purge legacy browser-saved store to ensure strict database-only mode
+      try {
+        localStorage.removeItem('uicms_workflow_v1_store');
+      } catch {}
+
       // 2. Check for active server-side session or active client-side session
       let sessionUser: User | null = null;
       try {
@@ -984,106 +988,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       root.classList.add('dark');
     }
   }, [themeMode]);
-
-  // Auto-save state with quota-safe sanitization and fallback
-  useEffect(() => {
-    const sanitizeStateForStorage = (data: any, detailLevel: number) => {
-      const maxLogs = detailLevel === 2 ? 80 : detailLevel === 1 ? 30 : 10;
-      const maxChats = detailLevel === 2 ? 100 : detailLevel === 1 ? 40 : 15;
-      const maxNotifs = detailLevel === 2 ? 50 : detailLevel === 1 ? 25 : 10;
-
-      // Safe copy of logs, chat, notifs
-      const safeLogs = (data.activityLogs || []).slice(0, maxLogs);
-      const safeChats = (data.chatMessages || []).slice(0, maxChats);
-      const safeNotifs = (data.notifications || []).slice(0, maxNotifs);
-      const safeUsers = (data.users || []).map((user: User) => {
-        const { password: _password, ...safeUser } = user;
-        return safeUser;
-      });
-      const { password: _currentPassword, ...safeCurrentUser } = data.currentUser || {};
-
-      // Clean large data URLs in file repository
-      const safeFiles = (data.files || []).map((f: any) => {
-        if (f.url && f.url.startsWith('data:') && f.url.length > 50000) {
-          return { ...f, url: '' };
-        }
-        return f;
-      });
-
-      // Clean large data URLs in version deliverables
-      const safeVersions = (data.versions || []).map((v: any) => {
-        const assets = (v.assets || []).map((a: any) => {
-          if (a.url && a.url.startsWith('data:') && a.url.length > 50000) {
-            return { ...a, url: '' };
-          }
-          return a;
-        });
-        return { ...v, fileUrl: v.fileUrl?.startsWith('data:') ? '' : v.fileUrl, assets };
-      });
-
-      return {
-        ...data,
-        users: safeUsers,
-        currentUser: safeCurrentUser,
-        activityLogs: safeLogs,
-        chatMessages: safeChats,
-        notifications: safeNotifs,
-        files: safeFiles,
-        versions: safeVersions,
-      };
-    };
-
-    const rawState = {
-      users,
-      currentUser,
-      projects,
-      tasks,
-      files,
-      versions,
-      qaSubmissions,
-      approvals,
-      feedbackItems,
-      notifications,
-      chatMessages,
-      activityLogs,
-      clients,
-      adminConfig,
-    };
-
-    // Progressive reduction save strategy
-    try {
-      const payload = sanitizeStateForStorage(rawState, 2);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      try {
-        const payload1 = sanitizeStateForStorage(rawState, 1);
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload1));
-      } catch {
-        try {
-          const payload0 = sanitizeStateForStorage(rawState, 0);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload0));
-        } catch {
-          // Gracefully suppress quota errors while keeping full memory state
-          console.warn('Local storage quota limit reached. Current session state retained in memory.');
-        }
-      }
-    }
-  }, [
-    users,
-    currentUser,
-    projects,
-    tasks,
-    files,
-    versions,
-    qaSubmissions,
-    approvals,
-    feedbackItems,
-    notifications,
-    chatMessages,
-    activityLogs,
-    clients,
-    adminConfig,
-  ]);
 
   const logActivity = (
     projectId: string,
