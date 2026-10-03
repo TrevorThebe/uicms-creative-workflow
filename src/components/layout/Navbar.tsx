@@ -284,25 +284,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
             {/* Live Session Inactivity Auto-Logout Timer */}
             <div
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all ${
-                sessionRemainingSeconds <= 15
+                sessionRemainingSeconds <= 60
                   ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
                   : 'bg-slate-950/80 border-slate-800/90 text-slate-300'
               }`}
-              title="Active session auto-monitored. 5 minutes of inactivity triggers auto-logout. Activity in this app resets this timer."
+              title="Active session auto-monitored. 60 minutes of inactivity triggers auto-logout. Activity in this app resets this timer."
             >
               <Clock
                 className={`w-3.5 h-3.5 ${
-                  sessionRemainingSeconds <= 15 ? 'text-rose-400 animate-pulse' : 'text-indigo-400'
+                  sessionRemainingSeconds <= 60 ? 'text-rose-400 animate-pulse' : 'text-indigo-400'
                 }`}
               />
               <span className="font-medium text-slate-400">
                 Session:{' '}
                 <strong
                   className={`font-mono font-bold ${
-                    sessionRemainingSeconds <= 15 ? 'text-rose-300 animate-pulse' : 'text-indigo-300'
+                    sessionRemainingSeconds <= 60 ? 'text-rose-300 animate-pulse' : 'text-indigo-300'
                   }`}
                 >
-                  {sessionRemainingSeconds}s
+                  {sessionRemainingSeconds > 60
+                    ? `${Math.floor(sessionRemainingSeconds / 60)}m`
+                    : `${sessionRemainingSeconds}s`}
                 </strong>
               </span>
             </div>

@@ -201,7 +201,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
-              {getTimeGreeting()}, {currentUser.name.split(' ')[0] || 'there'}
+              {getTimeGreeting()}, {currentUser?.name ? currentUser.name.split(' ')[0] : 'there'}
             </h1>
             <span className="text-xl">👋</span>
           </div>

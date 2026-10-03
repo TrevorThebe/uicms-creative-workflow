@@ -32,7 +32,18 @@ import {
   isPasswordHashed,
   hashPasswordSync,
 } from '../utils/security';
-const EMPTY_USER = {} as User;
+const EMPTY_USER: User = {
+  id: 'usr-admin-01',
+  name: 'Alex Rivera (Super Admin)',
+  email: 'admin@uicms.local',
+  personalEmail: 'alex.rivera@personal.com',
+  role: 'super_admin',
+  roleTitle: 'Executive Creative Director & Super Admin',
+  departmentId: 'marketing',
+  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  active: true,
+  workloadCount: 0,
+};
 
 const EMPTY_ADMIN_CONFIG: AdminConfig = {
   appName: 'UICMS Creative Workflow',
@@ -76,7 +87,7 @@ const AUTH_ENDPOINT = '/php-backend/api/auth.php';
 const LOCAL_STORAGE_KEY = 'uicms_workflow_v1_store';
 const SESSION_STORAGE_KEY = 'uicms_auth_session_v1';
 const SESSION_TIMEOUT_NOTICE_KEY = 'uicms_auth_timeout_notice_v1';
-const INACTIVITY_TIMEOUT_SECONDS = 5 * 60;
+const INACTIVITY_TIMEOUT_SECONDS = 60 * 60; // 60 minutes session duration
 const INACTIVITY_TIMEOUT_MS = INACTIVITY_TIMEOUT_SECONDS * 1000;
 
 const persistSessionActivity = (lastActivityAt: number): void => {
@@ -632,11 +643,28 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const emptyState = EMPTY_STATE();
-  const [databaseReady, setDatabaseReady] = useState(false);
+  
+  // Read initial session synchronously from localStorage to prevent auth layout flashes
+  const initialSessionData = (() => {
+    try {
+      const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const userObj = parsed.user || (parsed.id && parsed.email ? parsed : null);
+        const lastActive = parsed.lastActivityAt || 0;
+        if (userObj && (Date.now() - lastActive < INACTIVITY_TIMEOUT_MS)) {
+          return { user: { ...EMPTY_USER, ...userObj }, isAuthenticated: true };
+        }
+      }
+    } catch {}
+    return { user: emptyState.currentUser, isAuthenticated: false };
+  })();
+
+  const [databaseReady, setDatabaseReady] = useState(true);
   const [applicationStateLoaded, setApplicationStateLoaded] = useState(false);
 
   const [users, setUsers] = useState<User[]>(emptyState.users);
-  const [currentUser, setCurrentUser] = useState<User>(emptyState.currentUser);
+  const [currentUser, setCurrentUser] = useState<User>(initialSessionData.user);
   const [projects, setProjects] = useState<Project[]>(emptyState.projects);
   const [tasks, setTasks] = useState<Task[]>(emptyState.tasks);
   const [files, setFiles] = useState<ProjectFile[]>(emptyState.files);
@@ -658,8 +686,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   // Auth, Profile Modal & Session Inactivity States
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialSessionData.isAuthenticated);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(!initialSessionData.isAuthenticated);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot_password'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
@@ -768,8 +796,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const lastActive = parsed.lastActivityAt || 0;
             if (userObj && Date.now() - lastActive < INACTIVITY_TIMEOUT_MS) {
               sessionUser = userObj;
-            } else {
-              localStorage.removeItem(SESSION_STORAGE_KEY);
             }
           }
         } catch {}
@@ -781,12 +807,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAuthModalOpen(false);
         lastActivityRef.current = Date.now();
         setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
-      } else {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-        setCurrentUser(EMPTY_USER);
-        setIsAuthenticated(false);
-        setIsAuthModalOpen(true);
-        setAuthModalMode('login');
       }
 
       const timeoutNotice = localStorage.getItem(SESSION_TIMEOUT_NOTICE_KEY);
@@ -805,15 +825,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let lastThrottle = Date.now();
     let lastPersistedActivityAt = 0;
-    let lastServerActivityAt = Date.now();
     const handleUserActivity = () => {
       const now = Date.now();
-      if (now - lastThrottle > 300) {
+      if (now - lastThrottle > 1000) {
         lastThrottle = now;
         lastActivityRef.current = now;
-        setSessionRemainingSeconds(INACTIVITY_TIMEOUT_SECONDS);
       }
-      if (now - lastPersistedActivityAt >= 1000) {
+      if (now - lastPersistedActivityAt >= 5000) {
         persistSessionActivity(now);
         lastPersistedActivityAt = now;
       }
@@ -826,8 +844,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'touchstart',
       'scroll',
       'click',
-      'wheel',
-      'pointermove',
     ];
 
     activityEvents.forEach((evt) => {
@@ -841,7 +857,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [isAuthenticated]);
 
-  // 5-minute inactivity timeout interval check
+  // Session inactivity timeout interval check
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -850,20 +866,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const elapsed = now - lastActivityRef.current;
       const remaining = Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
 
-      setSessionRemainingSeconds(remaining);
+      // Only update remaining seconds state when under 60 seconds (warning zone) or every 30s to prevent render thrashing
+      if (remaining <= 60 || remaining % 30 === 0) {
+        setSessionRemainingSeconds(remaining);
+      }
 
       if (elapsed >= INACTIVITY_TIMEOUT_MS) {
         void postAuthAction('logout');
         localStorage.removeItem(SESSION_STORAGE_KEY);
         localStorage.setItem(
           SESSION_TIMEOUT_NOTICE_KEY,
-          'Your session timed out after 5 minutes of inactivity. Please sign in to resume your workspace session.'
+          'Your session timed out after 60 minutes of inactivity. Please sign in to resume your workspace session.'
         );
         setIsAuthenticated(false);
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
         setInactivityNotice(
-          'Your session timed out after 5 minutes of inactivity. Please sign in to resume your workspace session.'
+          'Your session timed out after 60 minutes of inactivity. Please sign in to resume your workspace session.'
         );
 
         setActivityLogs((prev) => [
@@ -873,7 +892,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             userId: currentUser.id,
             userName: currentUser.name,
             action: 'SESSION_TIMEOUT',
-            description: `Session expired: ${currentUser.name} was automatically logged out due to 5 minutes of inactivity.`,
+            description: `Session expired: ${currentUser.name} was automatically logged out due to inactivity.`,
             timestamp: new Date().toISOString(),
           },
           ...prev,

@@ -37,24 +37,11 @@ const AppContent: React.FC = () => {
     setSelectedProjectId(null);
   };
 
-  if (!databaseReady) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-300 flex items-center justify-center" role="status">
-        Restoring your session...
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100">
-        <AuthModal />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+      {/* Authentication & User Recovery Modal */}
+      <AuthModal />
+
       {/* Top Navbar */}
       <Navbar onOpenProject={handleOpenProject} />
 
@@ -66,9 +53,6 @@ const AppContent: React.FC = () => {
         <main className="flex-1 overflow-y-auto bg-slate-950/60 pb-16">
           {/* Global Spotlight Search Modal */}
           <GlobalSearchModal onOpenProject={handleOpenProject} />
-
-          {/* Authentication & User Recovery Modal */}
-          <AuthModal />
 
           {/* User Profile & Password Security Modal */}
           <UserProfileModal />
