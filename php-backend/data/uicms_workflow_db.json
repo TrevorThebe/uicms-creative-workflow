@@ -363,6 +363,22 @@
   ],
   "projects": [
     {
+      "id": "PRJ-TEST-1791046575833",
+      "name": "Automated Database Persistence Test Project",
+      "clientId": "cl-discovery",
+      "status": "completed",
+      "priority": "high",
+      "progress": 100,
+      "startDate": "2026-10-03",
+      "dueDate": "2026-10-20",
+      "budget": 15000,
+      "description": "Project created by automated database persistence test suite",
+      "members": [
+        "usr-admin-01"
+      ],
+      "deliverables": []
+    },
+    {
       "id": "PRJ-MKT-2026-001",
       "projectNumber": 101,
       "clientId": "cl-discovery",
@@ -2086,5 +2102,35 @@
         "allowManagerOverride": true
       }
     }
-  }
+  },
+  "products": [
+    {
+      "id": 1,
+      "name": "Ultra-Wide 4K Studio Monitor 34\"",
+      "description": "Curved IPS display with HDR600.",
+      "price": 899.99,
+      "created_at": "2026-10-01 10:00:00"
+    },
+    {
+      "id": 2,
+      "name": "Ergonomic Wireless Mechanical Keyboard",
+      "description": "Low-profile switches.",
+      "price": 149.5,
+      "created_at": "2026-10-01 11:30:00"
+    },
+    {
+      "id": 3,
+      "name": "Precision Studio Mouse",
+      "description": "Darkfield 8000 DPI sensor.",
+      "price": 99,
+      "created_at": "2026-10-02 09:15:00"
+    },
+    {
+      "id": 4,
+      "name": "Active Noise-Cancelling Headphones",
+      "description": "40mm beryllium drivers.",
+      "price": 349.99,
+      "created_at": "2026-10-02 14:20:00"
+    }
+  ]
 }

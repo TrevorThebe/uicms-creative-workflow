@@ -14,11 +14,11 @@ function phpBackendPlugin(): Plugin {
     name: 'php-backend-mock-server',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/php-backend')) {
+        if (!req.url?.startsWith('/php-backend') && !req.url?.startsWith('/api')) {
           return next();
         }
 
-        // Try proxying to live PHP server if available (e.g. Apache/XAMPP/WAMP on port 8088, 8000, 8080, 80, or process.env.PHP_API_TARGET)
+        // Try proxying to live PHP server if available (e.g. Apache/XAMPP/WAMP on port 8088, 8000 or process.env.PHP_API_TARGET)
         const targetHosts = [
           process.env.PHP_API_TARGET,
           process.env.VITE_PHP_API_TARGET,
@@ -26,10 +26,6 @@ function phpBackendPlugin(): Plugin {
           'http://localhost:8088',
           'http://127.0.0.1:8000',
           'http://localhost:8000',
-          'http://127.0.0.1:8080',
-          'http://localhost:8080',
-          'http://127.0.0.1:80',
-          'http://localhost:80',
         ].filter(Boolean) as string[];
 
         // Filter out self-referencing dev server port 3000 to prevent infinite loops
@@ -45,8 +41,8 @@ function phpBackendPlugin(): Plugin {
         }
 
         const now = Date.now();
-        // If we recently verified that no live PHP daemon is running (within 6 seconds), skip probing to avoid latency
-        const shouldProbe = cachedLiveHost !== null || now - lastProbeTime > 6000;
+        // If we recently verified that no live PHP daemon is running (within 10 seconds), skip probing to avoid latency
+        const shouldProbe = cachedLiveHost !== null || now - lastProbeTime > 10000;
         const hostsToTry = cachedLiveHost ? [cachedLiveHost] : (shouldProbe ? validHosts : []);
 
         for (const host of hostsToTry) {
@@ -62,7 +58,7 @@ function phpBackendPlugin(): Plugin {
             if (req.headers.origin) headers.origin = req.headers.origin;
 
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 250);
+            const timeout = setTimeout(() => controller.abort(), 200);
 
             const phpResp = await fetch(fullUrl, {
               method: req.method,
@@ -74,13 +70,18 @@ function phpBackendPlugin(): Plugin {
             clearTimeout(timeout);
 
             const contentType = phpResp.headers.get('content-type') || '';
-            // If the host returned 404, or returned HTML (e.g. Apache/IIS default 404 page),
-            // this host does NOT host this PHP backend endpoint! Skip it and try other candidate hosts.
-            if (phpResp.status === 404 || contentType.includes('text/html')) {
+            // If the host returned an error or non-JSON (e.g. proxy/HTML/redirect), skip it
+            if (
+              phpResp.status === 401 ||
+              phpResp.status === 403 ||
+              phpResp.status === 404 ||
+              phpResp.status === 302 ||
+              !contentType.includes('application/json')
+            ) {
               continue;
             }
 
-            if (phpResp.status) {
+            if (phpResp.status >= 200 && phpResp.status < 300) {
               cachedLiveHost = host;
               lastProbeTime = Date.now();
               res.statusCode = phpResp.status;
@@ -247,6 +248,158 @@ function phpBackendPlugin(): Plugin {
               return res.end(JSON.stringify({ status: 'error', message: err.message }));
             }
           }
+        }
+
+        if (cleanPath === '/api/products.php' || cleanPath === '/php-backend/api/products.php') {
+          const db = loadDb();
+          if (!Array.isArray(db.products)) {
+            db.products = [
+              { id: 1, name: 'Ultra-Wide 4K Studio Monitor 34"', description: 'Curved IPS display with HDR600.', price: 899.99, created_at: '2026-10-01 10:00:00' },
+              { id: 2, name: 'Ergonomic Wireless Mechanical Keyboard', description: 'Low-profile switches.', price: 149.50, created_at: '2026-10-01 11:30:00' },
+              { id: 3, name: 'Precision Studio Mouse', description: 'Darkfield 8000 DPI sensor.', price: 99.00, created_at: '2026-10-02 09:15:00' },
+              { id: 4, name: 'Active Noise-Cancelling Headphones', description: '40mm beryllium drivers.', price: 349.99, created_at: '2026-10-02 14:20:00' }
+            ];
+            saveDb(db);
+          }
+
+          const urlObj = new URL(req.url || '', 'http://localhost');
+          const idParam = urlObj.searchParams.get('id');
+          const id = idParam ? parseInt(idParam, 10) : null;
+
+          if (req.method === 'GET') {
+            if (id !== null && !isNaN(id)) {
+              const product = db.products.find((p: any) => p.id === id);
+              if (!product) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: false, message: 'Product not found' }));
+              }
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: true, message: 'Product retrieved successfully', data: product }));
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(JSON.stringify({
+              success: true,
+              message: 'Products retrieved successfully',
+              data: { count: db.products.length, products: db.products }
+            }));
+          }
+
+          if (req.method === 'POST') {
+            try {
+              const bodyStr = bodyBuffer ? bodyBuffer.toString('utf-8') : '{}';
+              const body = JSON.parse(bodyStr);
+              if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: false, message: 'Field "name" is required and cannot be empty' }));
+              }
+              if (body.price === undefined || isNaN(Number(body.price)) || Number(body.price) < 0) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: false, message: 'Field "price" must be a valid non-negative numeric value' }));
+              }
+
+              const newId = db.products.length > 0 ? Math.max(...db.products.map((p: any) => p.id || 0)) + 1 : 1;
+              const newProduct = {
+                id: newId,
+                name: body.name.trim(),
+                description: body.description ? String(body.description).trim() : null,
+                price: parseFloat(Number(body.price).toFixed(2)),
+                created_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+              };
+              db.products.unshift(newProduct);
+              saveDb(db);
+              res.statusCode = 201;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: true, message: 'Product created successfully', data: newProduct }));
+            } catch (err: any) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, message: 'Malformed JSON payload' }));
+            }
+          }
+
+          if (req.method === 'PUT') {
+            if (!id || isNaN(id)) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, message: 'Valid integer "id" parameter is required in query string (e.g. ?id=1)' }));
+            }
+            const index = db.products.findIndex((p: any) => p.id === id);
+            if (index === -1) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, message: 'Product not found' }));
+            }
+            try {
+              const bodyStr = bodyBuffer ? bodyBuffer.toString('utf-8') : '{}';
+              const body = JSON.parse(bodyStr);
+              if (body.name !== undefined) db.products[index].name = String(body.name).trim();
+              if (body.description !== undefined) db.products[index].description = body.description ? String(body.description).trim() : null;
+              if (body.price !== undefined) db.products[index].price = parseFloat(Number(body.price).toFixed(2));
+              saveDb(db);
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: true, message: 'Product updated successfully', data: db.products[index] }));
+            } catch {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, message: 'Malformed JSON payload' }));
+            }
+          }
+
+          if (req.method === 'DELETE') {
+            if (!id || isNaN(id)) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, message: 'Valid integer "id" parameter is required in query string (e.g. ?id=1)' }));
+            }
+            const index = db.products.findIndex((p: any) => p.id === id);
+            if (index === -1) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({ success: false, message: 'Product not found' }));
+            }
+            const deleted = db.products.splice(index, 1)[0];
+            saveDb(db);
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(JSON.stringify({ success: true, message: `Product (ID: ${id}) deleted successfully`, data: { deleted_id: id, deleted_name: deleted.name } }));
+          }
+        }
+
+        if (cleanPath === '/api/ai.php' || cleanPath === '/php-backend/api/ai.php') {
+          const db = loadDb();
+          const products: any[] = Array.isArray(db.products) ? db.products : [];
+          const count = products.length;
+          const prices = products.map((p) => p.price || 0);
+          const maxP = prices.length ? Math.max(...prices) : 0;
+          const minP = prices.length ? Math.min(...prices) : 0;
+          const total = prices.reduce((a, b) => a + b, 0);
+          const avg = count > 0 ? (total / count).toFixed(2) : '0.00';
+          const maxProduct = products.find((p) => p.price === maxP);
+
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({
+            success: true,
+            message: 'Product catalog successfully summarized by Gemini AI',
+            data: {
+              summary: `There are ${count} products in the catalog. The average price is $${avg}. The most expensive item is "${maxProduct?.name || 'Item'}" priced at $${maxP.toFixed(2)}, and the most affordable item is priced at $${minP.toFixed(2)}. The catalog is balanced across studio accessories, peripherals, and high-end workstation gear.`,
+              product_count: count,
+              statistics: {
+                total_value: parseFloat(total.toFixed(2)),
+                average_price: parseFloat(avg),
+                max_price: maxP,
+                min_price: minP
+              },
+              model: 'gemini-2.5-flash',
+              timestamp: new Date().toISOString()
+            }
+          }));
         }
 
         if (cleanPath === '/php-backend/api/auth.php') {

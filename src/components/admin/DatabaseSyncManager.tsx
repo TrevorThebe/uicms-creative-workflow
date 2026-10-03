@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Bug,
   Check,
   CheckCircle2,
   Code,
@@ -174,6 +175,71 @@ export const DatabaseSyncManager: React.FC = () => {
       setApiSyncFeedback({
         success: false,
         message: `Push failed: ${err.message || 'Network error'}`,
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Run Roundtrip Debug Test (POST dummy record & GET verification)
+  const handleRunDebugTest = async () => {
+    setIsSyncing(true);
+    setApiSyncFeedback(null);
+    const testTimestamp = new Date().toISOString();
+    const testRecordId = `test-rec-${Date.now()}`;
+    const testLog = {
+      id: testRecordId,
+      projectId: 'DIAGNOSTIC',
+      userId: currentUser.id || 'admin',
+      userName: currentUser.name || 'Administrator',
+      action: 'DATABASE_DEBUG_TEST',
+      description: `Automated debug test record created at ${new Date().toLocaleTimeString()}`,
+      timestamp: testTimestamp,
+    };
+
+    try {
+      // Step 1: Read current database
+      const readRes = await fetch('/php-backend/api/data.php', {
+        headers: { Accept: 'application/json' },
+      });
+      const dbData = await readRes.json().catch(() => ({}));
+      const currentLogs = Array.isArray(dbData?.data?.activity_logs) ? dbData.data.activity_logs : [];
+      const updatedLogs = [testLog, ...currentLogs];
+
+      // Step 2: POST dummy record
+      const postRes = await fetch('/php-backend/api/data.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          table: 'activity_logs',
+          data: updatedLogs,
+        }),
+      });
+      const postJson = await postRes.json().catch(() => null);
+      if (!postRes.ok || postJson?.status !== 'success') {
+        throw new Error(postJson?.message || `POST failed with status ${postRes.status}`);
+      }
+
+      // Step 3: GET verify
+      const verifyRes = await fetch('/php-backend/api/data.php', {
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+      });
+      const verifyJson = await verifyRes.json().catch(() => null);
+      const matched = (verifyJson?.data?.activity_logs || []).find((l: any) => l.id === testRecordId);
+
+      if (!matched) {
+        throw new Error('Test record was written but could not be verified via GET query.');
+      }
+
+      setApiSyncFeedback({
+        success: true,
+        message: `Debug Test Passed! Successfully POSTed dummy record (${testRecordId}) and verified its retrieval via GET from /php-backend/api/data.php.`,
+        details: { postedRecord: testLog, verifiedRecord: matched },
+      });
+    } catch (err: any) {
+      setApiSyncFeedback({
+        success: false,
+        message: `Debug Test Failed: ${err.message || 'Unknown error during roundtrip test'}`,
       });
     } finally {
       setIsSyncing(false);
@@ -656,6 +722,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 >
                   <ArrowUpFromLine className="w-3.5 h-3.5" />
                   <span>Push State (POST)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunDebugTest}
+                  disabled={isSyncing}
+                  className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-colors"
+                >
+                  <Bug className="w-3.5 h-3.5 text-purple-200" />
+                  <span>Debug Test</span>
                 </button>
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5">

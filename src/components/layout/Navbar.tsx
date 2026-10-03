@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Bell,
@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  Database,
   KeyRound,
   Layers,
   LogOut,
@@ -60,6 +61,32 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
 
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isNotifDropdownOpen, setIsNotifDropdownOpen] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkDb = async () => {
+      try {
+        const res = await fetch('/php-backend/api/index.php', {
+          headers: { Accept: 'application/json' },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (isMounted) setDbStatus(data?.status === 'online' ? 'online' : 'offline');
+        } else {
+          if (isMounted) setDbStatus('offline');
+        }
+      } catch {
+        if (isMounted) setDbStatus('offline');
+      }
+    };
+    checkDb();
+    const interval = setInterval(checkDb, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read && n.userId === currentUser.id).length;
   const userNotifications = notifications.filter((n) => n.userId === currentUser.id || !n.userId);
@@ -281,6 +308,30 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenNewRequest, onOpenProject 
           </button>
         ) : (
           <div className="flex items-center gap-2.5">
+            {/* Live Database & Backend Status Badge */}
+            <button
+              type="button"
+              onClick={() => {
+                if (currentUser.role === 'super_admin') {
+                  setActiveNavSection('administration');
+                }
+              }}
+              className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-mono transition-all ${
+                dbStatus === 'online'
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/30'
+                  : dbStatus === 'offline'
+                  ? 'bg-rose-950/40 border-rose-500/30 text-rose-300 hover:bg-rose-900/30'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-400'
+              }`}
+              title={currentUser.role === 'super_admin' ? 'Backend Database Live - Click to open Administration Diagnostics' : 'Backend Database Connected'}
+            >
+              <Database className={`w-3.5 h-3.5 ${dbStatus === 'online' ? 'text-emerald-400' : dbStatus === 'offline' ? 'text-rose-400' : 'text-slate-400'}`} />
+              <span className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'online' ? 'bg-emerald-400 animate-pulse' : dbStatus === 'offline' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                <span className="font-sans font-semibold">{dbStatus === 'online' ? 'DB: Live' : dbStatus === 'offline' ? 'DB: Offline' : 'DB: Checking'}</span>
+              </span>
+            </button>
+
             {/* Live Session Inactivity Auto-Logout Timer */}
             <div
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all ${
