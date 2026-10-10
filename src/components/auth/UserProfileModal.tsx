@@ -79,7 +79,7 @@ export const UserProfileModal: React.FC = () => {
 
   if (!isProfileModalOpen) return null;
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError(null);
     setProfileSuccess(null);
@@ -89,7 +89,7 @@ export const UserProfileModal: React.FC = () => {
       return;
     }
 
-    const res = updateUserProfile(currentUser.id, {
+    const res = await updateUserProfile(currentUser.id, {
       name: name.trim(),
       roleTitle: roleTitle.trim(),
       departmentId,

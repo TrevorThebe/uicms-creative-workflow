@@ -882,7 +882,7 @@ export interface AppContextType {
   updateUserProfile: (
     userId: string,
     updates: Partial<Pick<User, 'name' | 'email' | 'personalEmail' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
-  ) => { success: boolean; error?: string; user?: User };
+  ) => Promise<{ success: boolean; error?: string; user?: User }>;
   encryptAllUserPasswords: () => { success: boolean; count: number };
   refreshDatabase: () => Promise<boolean>;
   purgeLocalBrowserDataAndSync: () => Promise<{ success: boolean; message: string; data?: any }>;
@@ -3334,10 +3334,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: result.success, error: result.error };
   };
 
-  const updateUserProfile = (
+  const updateUserProfile = async (
     userId: string,
     updates: Partial<Pick<User, 'name' | 'email' | 'personalEmail' | 'avatar' | 'roleTitle' | 'departmentId' | 'role'>>
-  ): { success: boolean; error?: string; user?: User } => {
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
     const user = users.find((u) => u.id === userId);
     if (!user) return { success: false, error: 'User account not found.' };
 
@@ -3363,7 +3363,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: updates.role !== undefined ? updates.role : user.role,
     };
 
-    setUsers((prev) => prev.map((u) => (u.id === userId ? updatedUser : u)));
+    const updatedUsers = users.map((u) => (u.id === userId ? updatedUser : u));
+    setUsers(updatedUsers);
 
     if (currentUser.id === userId) {
       setCurrentUser(updatedUser);
@@ -3383,6 +3384,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: new Date().toISOString(),
     };
     setActivityLogs((prev) => [newLog, ...prev]);
+
+    // Persist changes
+    void persistTableToBackend('users', updatedUsers);
+    void persistTableToBackend('activity_logs', [newLog, ...activityLogs]);
 
     return { success: true, user: updatedUser };
   };

@@ -215,7 +215,7 @@ export const UserManagementPanel: React.FC = () => {
       }
     }
 
-    const res = updateUserProfile(editingUser.id, {
+    const res = await updateUserProfile(editingUser.id, {
       name: editName.trim(),
       email: editEmail.trim(),
       personalEmail: editPersonalEmail.trim() || undefined,
@@ -234,9 +234,9 @@ export const UserManagementPanel: React.FC = () => {
     }
   };
 
-  const handleQuickRoleAllocate = (user: User, newRole: UserRole) => {
+  const handleQuickRoleAllocate = async (user: User, newRole: UserRole) => {
     if (user.role === newRole) return;
-    const res = updateUserProfile(user.id, { role: newRole });
+    const res = await updateUserProfile(user.id, { role: newRole });
     if (res.success) {
       setActionSuccess(`Role for ${user.name} allocated to ${newRole.replace('_', ' ').toUpperCase()}.`);
       setTimeout(() => setActionSuccess(null), 3000);
