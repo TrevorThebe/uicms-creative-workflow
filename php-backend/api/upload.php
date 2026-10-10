@@ -53,6 +53,14 @@ if (is_array($input) && !empty($input['base64']) && !empty($input['filename'])) 
     $base64Data = $input['base64'];
     $filename = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $input['filename']);
     
+    // Check if filename already exists
+    $filename = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $input['filename']);
+    $targetPath = $targetDir . '/' . $filename;
+    
+    if (file_exists($targetPath)) {
+        sendResponse(409, ['status' => 'error', 'message' => 'Filename already exists. Please rename the file.']);
+    }
+    
     // Split mime type and base64 payload
     if (preg_match('/^data:image\/([a-zA-Z0-9.+-]+);base64,/i', $base64Data, $typeMatch)) {
         $ext = strtolower($typeMatch[1]);
@@ -69,17 +77,13 @@ if (is_array($input) && !empty($input['base64']) && !empty($input['filename'])) 
         sendResponse(400, ['status' => 'error', 'message' => 'Invalid base64 payload']);
     }
     
-    // Enforce filename uniqueness
-    $uniqueName = uniqid() . '_' . pathinfo($filename, PATHINFO_FILENAME) . '.' . $ext;
-    $targetPath = $targetDir . '/' . $uniqueName;
-    
     if (file_put_contents($targetPath, $decoded) !== false) {
-        $relativeUrl = '/php-backend/uploads/' . $urlFolder . '/' . $uniqueName;
+        $relativeUrl = '/php-backend/uploads/' . $urlFolder . '/' . $filename;
         sendResponse(200, [
             'status' => 'success',
             'message' => 'Base64 asset uploaded successfully',
             'url' => $relativeUrl,
-            'filename' => $uniqueName
+            'filename' => $filename
         ]);
     } else {
         error_log("Failed to save base64 asset to: " . $targetPath);
@@ -126,16 +130,21 @@ if (!in_array($ext, $allowedExts, true)) {
 
 // Sanitize filename to prevent directory traversal
 $safeName = preg_replace('/[^a-zA-Z0-9_.-]/', '_', pathinfo($rawFilename, PATHINFO_FILENAME));
-$uniqueName = uniqid() . '_' . $safeName . '.' . $ext;
-$targetPath = $targetDir . '/' . $uniqueName;
+$filename = $safeName . '.' . $ext;
+$targetPath = $targetDir . '/' . $filename;
+
+// Check if file exists
+if (file_exists($targetPath)) {
+    sendResponse(409, ['status' => 'error', 'message' => 'Filename already exists. Please rename the file.']);
+}
 
 if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-    $relativeUrl = '/php-backend/uploads/' . $urlFolder . '/' . $uniqueName;
+    $relativeUrl = '/php-backend/uploads/' . $urlFolder . '/' . $filename;
     sendResponse(200, [
         'status' => 'success',
         'message' => 'File uploaded successfully',
         'url' => $relativeUrl,
-        'filename' => $uniqueName
+        'filename' => $filename
     ]);
 } else {
     error_log("Failed to persist uploaded file to: " . $targetPath);
