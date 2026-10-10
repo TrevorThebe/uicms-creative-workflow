@@ -102,16 +102,32 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
             const compressed = canvas.toDataURL('image/jpeg', 0.82);
             
             // Upload to phpMyAdmin backend folder
-            fetch('/php-backend/api/upload.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                base64: compressed,
-                filename: file.name,
-                type: 'avatar'
-              })
-            })
-            .then(res => res.json())
+            const uploadPayload = {
+              base64: compressed,
+              filename: file.name,
+              type: 'avatar'
+            };
+
+            const endpoints = [
+              '/php-backend/api/upload.php',
+              'http://13.247.178.29/php-backend/api/upload.php',
+            ];
+
+            const uploadAttempt = async (index: number): Promise<any> => {
+              if (index >= endpoints.length) throw new Error('All uploads failed');
+              const url = endpoints[index];
+              const isCrossDomain = url.startsWith('http');
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: isCrossDomain ? 'omit' : 'include',
+                body: JSON.stringify(uploadPayload)
+              });
+              if (res.ok) return await res.json();
+              return uploadAttempt(index + 1);
+            };
+
+            uploadAttempt(0)
             .then(data => {
               if (data.status === 'success' && data.url) {
                 onAvatarChange(data.url);
@@ -137,16 +153,32 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
       img.onerror = () => {
         // Fallback upload to backend
-        fetch('/php-backend/api/upload.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            base64: result,
-            filename: file.name,
-            type: 'avatar'
-          })
-        })
-        .then(res => res.json())
+        const uploadPayload = {
+          base64: result,
+          filename: file.name,
+          type: 'avatar'
+        };
+
+        const endpoints = [
+          '/php-backend/api/upload.php',
+          'http://13.247.178.29/php-backend/api/upload.php',
+        ];
+
+        const uploadAttempt = async (index: number): Promise<any> => {
+          if (index >= endpoints.length) throw new Error('All uploads failed');
+          const url = endpoints[index];
+          const isCrossDomain = url.startsWith('http');
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: isCrossDomain ? 'omit' : 'include',
+            body: JSON.stringify(uploadPayload)
+          });
+          if (res.ok) return await res.json();
+          return uploadAttempt(index + 1);
+        };
+
+        uploadAttempt(0)
         .then(data => {
           if (data.status === 'success' && data.url) {
             onAvatarChange(data.url);
