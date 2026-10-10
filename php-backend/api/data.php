@@ -383,7 +383,8 @@ $ensureColumn('users', 'temp_password_expires_at', 'VARCHAR(50) NULL');
 $ensureColumn('users', 'must_change_password', 'TINYINT(1) NOT NULL DEFAULT 0');
 
 try {
-    $db->exec("ALTER TABLE `users` ALTER COLUMN `password` SET DEFAULT ''");
+    $db->exec("ALTER TABLE `users` MODIFY COLUMN `password` VARCHAR(255) NOT NULL DEFAULT ''");
+    $db->exec("ALTER TABLE `users` MODIFY COLUMN `avatar` TEXT NULL");
 } catch (Throwable $e) {
     try {
         $db->exec("ALTER TABLE `users` MODIFY COLUMN `password` VARCHAR(255) NOT NULL DEFAULT ''");
@@ -394,7 +395,7 @@ try {
     $db->exec("ALTER TABLE `chat_messages` MODIFY COLUMN `project_id` VARCHAR(50) NULL");
 } catch (Throwable $e) {}
 
-$ensureColumn('chat_messages', 'sender_avatar', 'VARCHAR(500) NULL');
+$ensureColumn('chat_messages', 'sender_avatar', 'TEXT NULL');
 $ensureColumn('chat_messages', 'text', 'LONGTEXT NULL');
 $ensureColumn('chat_messages', 'mentions', 'JSON NULL');
 $ensureColumn('chat_messages', 'referenced_task_id', 'VARCHAR(50) NULL');
