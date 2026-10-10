@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { useSSE } from '../hooks/useSSE';
 import {
   ActivityLog,
   AdminConfig,
@@ -83,6 +84,8 @@ const EMPTY_ADMIN_CONFIG: AdminConfig = {
 
 const DB_DATA_ENDPOINTS = [
   '/php-backend/api/data.php',
+  '/api/data.php',
+  'api/data.php',
   'http://localhost/php-backend/api/data.php',
   'http://127.0.0.1/php-backend/api/data.php',
   'http://localhost:80/php-backend/api/data.php',
@@ -199,6 +202,8 @@ const executeBackendAction = async (
 };
 const AUTH_ENDPOINTS = [
   '/php-backend/api/auth.php',
+  '/api/auth.php',
+  'api/auth.php',
   'http://localhost/php-backend/api/auth.php',
   'http://127.0.0.1/php-backend/api/auth.php',
   'http://localhost:80/php-backend/api/auth.php',
@@ -870,8 +875,8 @@ export interface AppContextType {
     newPersonalEmail?: string
   ) => { success: boolean; error?: string; user?: User };
   logoutUser: () => void;
-  suspendUser: (userId: string, reason: string) => { success: boolean; error?: string };
-  reactivateUser: (userId: string) => { success: boolean; error?: string };
+  suspendUser: (userId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+  reactivateUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   deleteUser: (userId: string, reassignToUserId?: string) => { success: boolean; error?: string };
   updateUserPassword: (userId: string, oldPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (
@@ -934,6 +939,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(!initialSessionData.isAuthenticated);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot_password'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  // SSE for real-time updates
+  useSSE(useCallback(() => {
+    fetchDatabaseState(true).then(applyDatabaseState);
+  }, []));
 
   // Inactivity Auto-Logout Timer State
   const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number>(INACTIVITY_TIMEOUT_SECONDS);
@@ -3124,10 +3134,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthModalMode('login');
   };
 
-  const suspendUser = (
+  const suspendUser = async (
     userId: string,
     reason: string
-  ): { success: boolean; error?: string } => {
+  ): Promise<{ success: boolean; error?: string }> => {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
       return { success: false, error: 'Target user not found.' };
@@ -3138,20 +3148,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const now = new Date().toISOString();
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? {
-              ...u,
-              active: false,
-              isSuspended: true,
-              suspendedReason: reason || 'Administrative suspension',
-              suspendedAt: now,
-              suspendedBy: currentUser.name,
-            }
-          : u
-      )
+    const updatedUsers = users.map((u) =>
+      u.id === userId
+        ? {
+            ...u,
+            active: false,
+            isSuspended: true,
+            suspendedReason: reason || 'Administrative suspension',
+            suspensionReason: reason || 'Administrative suspension',
+            suspendedAt: now,
+            suspendedBy: currentUser.name,
+          }
+        : u
     );
+
+    // Update state immediately
+    setUsers(updatedUsers);
 
     // Audit log
     const logId = `log-${Date.now()}`;
@@ -3166,8 +3178,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setActivityLogs((prev) => [newLog, ...prev]);
 
-    // Persist to backend database
-    postAuthAction('suspend-user', { userId, isSuspended: true, reason }).catch(() => {});
+    // Persist to backend database via dedicated auth gateway and data endpoints
+    const result = await postAuthAction('suspend-user', {
+      userId,
+      id: userId,
+      isSuspended: true,
+      active: false,
+      reason: reason || 'Administrative suspension',
+    });
+
+    // Also sync to relational database tables to ensure data consistency
+    void persistTableToBackend('users', updatedUsers);
+    void persistTableToBackend('activity_logs', [newLog]);
+
+    if (!result.success) {
+      console.warn('[Suspend User Warning] Backend returned notice:', result.error);
+    }
 
     // If current logged-in user is suspended, log them out
     if (currentUser.id === userId) {
@@ -3177,26 +3203,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const reactivateUser = (userId: string): { success: boolean; error?: string } => {
+  const reactivateUser = async (userId: string): Promise<{ success: boolean; error?: string }> => {
     const targetUser = users.find((u) => u.id === userId);
     if (!targetUser) {
       return { success: false, error: 'Target user not found.' };
     }
 
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? {
-              ...u,
-              active: true,
-              isSuspended: false,
-              suspendedReason: undefined,
-              suspendedAt: undefined,
-              suspendedBy: undefined,
-            }
-          : u
-      )
+    const updatedUsers = users.map((u) =>
+      u.id === userId
+        ? {
+            ...u,
+            active: true,
+            isSuspended: false,
+            suspendedReason: undefined,
+            suspensionReason: undefined,
+            suspendedAt: undefined,
+            suspendedBy: undefined,
+          }
+        : u
     );
+
+    // Update state immediately
+    setUsers(updatedUsers);
 
     // Audit log
     const logId = `log-${Date.now()}`;
@@ -3212,7 +3240,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActivityLogs((prev) => [newLog, ...prev]);
 
     // Persist to backend database
-    postAuthAction('suspend-user', { userId, isSuspended: false }).catch(() => {});
+    const result = await postAuthAction('suspend-user', {
+      userId,
+      id: userId,
+      isSuspended: false,
+      active: true,
+    });
+
+    // Also sync to relational database tables
+    void persistTableToBackend('users', updatedUsers);
+    void persistTableToBackend('activity_logs', [newLog]);
+
+    if (!result.success) {
+      console.warn('[Reactivate User Warning] Backend returned notice:', result.error);
+    }
 
     return { success: true };
   };

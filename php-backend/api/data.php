@@ -375,6 +375,9 @@ foreach ($tables as $tableName) {
     }
 }
 $ensureColumn('users', 'personal_email', 'VARCHAR(150) NULL');
+$ensureColumn('users', 'active', 'TINYINT(1) NOT NULL DEFAULT 1');
+$ensureColumn('users', 'is_suspended', 'TINYINT(1) NOT NULL DEFAULT 0');
+$ensureColumn('users', 'suspension_reason', 'TEXT NULL');
 $ensureColumn('users', 'is_temp_password', 'TINYINT(1) NOT NULL DEFAULT 0');
 $ensureColumn('users', 'temp_password_expires_at', 'VARCHAR(50) NULL');
 $ensureColumn('users', 'must_change_password', 'TINYINT(1) NOT NULL DEFAULT 0');
@@ -518,6 +521,9 @@ $readValue = function (array $row, string $key, $fallback = null) {
         'uploaded_by' => ['uploadedBy'],
         'uploaded_by_name' => ['uploadedByName'],
         'uploaded_at' => ['uploadedAt'],
+        'is_suspended' => ['isSuspended', 'is_suspended'],
+        'suspension_reason' => ['suspendedReason', 'suspensionReason', 'suspension_reason'],
+        'active' => ['active'],
     ];
 
     foreach ($aliases[$key] ?? [] as $path) {
@@ -852,6 +858,24 @@ try {
                 $upStmt = $db->prepare("UPDATE `notifications` SET is_read = 1 WHERE user_id = :uid");
                 $upStmt->execute([':uid' => $targetUid]);
                 sendResponse(200, ['status' => 'success', 'message' => "All notifications marked as read for user"]);
+            } elseif (($action === 'suspend_user' || $action === 'suspend-user') && (!empty($input['userId']) || !empty($input['id']) || !empty($input['user_id']))) {
+                $targetUid = (string)($input['userId'] ?? $input['id'] ?? $input['user_id']);
+                $isSusp = 0;
+                if (isset($input['isSuspended'])) {
+                    $isSusp = ($input['isSuspended'] === true || $input['isSuspended'] === 1 || $input['isSuspended'] === '1' || $input['isSuspended'] === 'true') ? 1 : 0;
+                } elseif (isset($input['is_suspended'])) {
+                    $isSusp = ($input['is_suspended'] === true || $input['is_suspended'] === 1 || $input['is_suspended'] === '1' || $input['is_suspended'] === 'true') ? 1 : 0;
+                }
+                $suspReason = (string)($input['reason'] ?? $input['suspensionReason'] ?? $input['suspension_reason'] ?? '');
+                $upStmt = $db->prepare("UPDATE `users` SET is_suspended = :sus, active = :act, suspension_reason = :reason, updated_at = NOW() WHERE id = :id OR LOWER(email) = LOWER(:id_email)");
+                $upStmt->execute([
+                    ':sus' => $isSusp,
+                    ':act' => $isSusp ? 0 : 1,
+                    ':reason' => $suspReason,
+                    ':id' => $targetUid,
+                    ':id_email' => $targetUid,
+                ]);
+                sendResponse(200, ['status' => 'success', 'message' => $isSusp ? 'User suspended successfully' : 'User unsuspended successfully']);
             }
         }
 

@@ -758,7 +758,7 @@ if ($action === 'suspend-user' || $action === 'suspend_user') {
         } catch (Throwable) {}
 
         // Locate user by ID or Email
-        $findStmt = $db->prepare('SELECT id, name, email FROM `users` WHERE id = :id OR LOWER(email) = LOWER(:id_email) LIMIT 1');
+        $findStmt = $db->prepare('SELECT id, name, email, app_payload FROM `users` WHERE id = :id OR LOWER(email) = LOWER(:id_email) LIMIT 1');
         $findStmt->execute([':id' => $userId, ':id_email' => $userId]);
         $targetUser = $findStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -771,12 +771,20 @@ if ($action === 'suspend-user' || $action === 'suspend_user') {
 
         $realUserId = $targetUser['id'];
 
-        // Execute update on users table (updating is_suspended, active, suspension_reason)
-        $stmt = $db->prepare('UPDATE `users` SET is_suspended = :sus, active = :active, suspension_reason = :reason, updated_at = NOW() WHERE id = :id');
+        // Update app_payload
+        $payload = json_decode($targetUser['app_payload'] ?? '{}', true) ?: [];
+        $payload['is_suspended'] = (bool)$isSuspended;
+        $payload['active'] = (bool)$active;
+        $payload['suspension_reason'] = $reason;
+        $newPayload = json_encode($payload);
+
+        // Execute update on users table (updating is_suspended, active, suspension_reason, app_payload)
+        $stmt = $db->prepare('UPDATE `users` SET is_suspended = :sus, active = :active, suspension_reason = :reason, app_payload = :payload, updated_at = NOW() WHERE id = :id');
         $stmt->execute([
             ':sus' => $isSuspended,
             ':active' => $active,
             ':reason' => $reason,
+            ':payload' => $newPayload,
             ':id' => $realUserId,
         ]);
 

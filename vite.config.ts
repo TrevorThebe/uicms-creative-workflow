@@ -1449,6 +1449,41 @@ function phpBackendPlugin(): Plugin {
         }
 
         // Standalone Dynamic Database & Auth Engine
+        if (cleanPath === '/php-backend/api/sse.php') {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Connection', 'keep-alive');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+
+          const pool = await getMysqlConnection();
+          if (!pool) {
+            res.write(`data: ${JSON.stringify({ error: 'Database unavailable' })}\n\n`);
+            res.end();
+            return;
+          }
+
+          let lastUpdate: string | null = null;
+          
+          const interval = setInterval(async () => {
+            try {
+              const [rows]: any = await pool.query('SELECT MAX(updated_at) as last_update FROM projects');
+              const currentUpdate = rows[0]?.last_update;
+              if (lastUpdate && currentUpdate && lastUpdate !== currentUpdate) {
+                res.write(`data: ${JSON.stringify({ type: 'refresh' })}\n\n`);
+              }
+              lastUpdate = currentUpdate;
+            } catch (err) {
+              console.error('SSE Error:', err);
+            }
+          }, 3000);
+
+          req.on('close', () => {
+            clearInterval(interval);
+            res.end();
+          });
+          return;
+        }
+        
         const dbFilePath = path.resolve(__dirname, 'php-backend/data/uicms_workflow_db.json');
         const loadDb = () => {
           try {
@@ -2549,23 +2584,40 @@ function phpBackendPlugin(): Plugin {
             return res.end(JSON.stringify({ status: 'error', message: 'User not found' }));
           }
 
-          if (action === 'suspend-user') {
-            const userId = (body.userId || body.id || urlObj.searchParams.get('userId') || urlObj.searchParams.get('id') || '').trim();
-            const isSuspended = body.isSuspended !== false && body.isSuspended !== 0 && body.isSuspended !== '0';
-            const reason = body.reason || '';
-            const uIdx = users.findIndex((u: any) => u.id === userId);
+          if (action === 'suspend-user' || action === 'suspend_user') {
+            const userId = (body.userId || body.id || body.user_id || urlObj.searchParams.get('userId') || urlObj.searchParams.get('id') || '').trim();
+            const isSuspended = body.isSuspended !== false && body.isSuspended !== 0 && body.isSuspended !== '0' && body.is_suspended !== false && body.is_suspended !== 0 && body.is_suspended !== '0';
+            const reason = body.reason || body.suspensionReason || body.suspension_reason || '';
+            const uIdx = users.findIndex((u: any) => u.id === userId || (u.email && u.email.toLowerCase() === userId.toLowerCase()));
             if (uIdx !== -1) {
+              const targetUser = users[uIdx];
               users[uIdx].isSuspended = isSuspended;
               users[uIdx].suspensionReason = reason;
+              users[uIdx].suspendedReason = reason;
               users[uIdx].active = !isSuspended;
               db.users = users;
+
+              // Record in activity_logs
+              if (!Array.isArray(db.activity_logs)) db.activity_logs = [];
+              db.activity_logs.unshift({
+                id: `act-${Date.now()}`,
+                project_id: 'SYSTEM',
+                user_id: targetUser.id,
+                user_name: targetUser.name || targetUser.email,
+                action: isSuspended ? 'USER_SUSPENDED' : 'USER_REACTIVATED',
+                description: isSuspended
+                  ? `User ${targetUser.name} (${targetUser.email}) was suspended. Reason: ${reason || 'Administrative action'}`
+                  : `User ${targetUser.name} (${targetUser.email}) was reactivated.`,
+                timestamp: new Date().toISOString()
+              });
+
               saveDb(db);
 
               if (liveMysql) {
                 try {
                   await liveMysql.query(
-                    'UPDATE users SET is_suspended = ?, suspension_reason = ?, active = ? WHERE id = ?',
-                    [isSuspended ? 1 : 0, reason, isSuspended ? 0 : 1, userId]
+                    'UPDATE users SET is_suspended = ?, suspension_reason = ?, active = ? WHERE id = ? OR LOWER(email) = ?',
+                    [isSuspended ? 1 : 0, reason, isSuspended ? 0 : 1, targetUser.id, targetUser.email.toLowerCase()]
                   );
                 } catch (e: any) {
                   console.warn('MySQL suspend-user error:', e.message);
@@ -2573,7 +2625,11 @@ function phpBackendPlugin(): Plugin {
               }
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              return res.end(JSON.stringify({ status: 'success', message: `User ${isSuspended ? 'suspended' : 'reactivated'} successfully` }));
+              return res.end(JSON.stringify({
+                status: 'success',
+                message: `User ${isSuspended ? 'suspended' : 'reactivated'} successfully`,
+                user: sanitizeUser(users[uIdx])
+              }));
             }
             res.statusCode = 404;
             res.setHeader('Content-Type', 'application/json');
