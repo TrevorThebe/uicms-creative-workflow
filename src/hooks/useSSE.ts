@@ -3,24 +3,44 @@ import { logError } from '../utils/logger';
 
 export const useSSE = (onUpdate: () => void) => {
   useEffect(() => {
-    const url = '/php-backend/api/sse.php';
-    console.log(`[SSE] Connecting to origin: ${window.location.origin}, URL: ${url}, Full URL: ${window.location.origin + url}`);
-    const eventSource = new EventSource(url);
+    const endpoints = [
+      '/php-backend/api/sse.php',
+      'http://13.247.178.29/php-backend/api/sse.php',
+      'http://localhost/php-backend/api/sse.php',
+    ];
 
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'refresh') {
-        onUpdate();
+    let currentEndpointIndex = 0;
+    let eventSource: EventSource | null = null;
+
+    const connect = () => {
+      if (currentEndpointIndex >= endpoints.length) {
+        logError('SSE', 'All endpoints failed');
+        return;
       }
+
+      const url = endpoints[currentEndpointIndex];
+      console.log(`[SSE] Connecting to URL: ${url}`);
+      eventSource = new EventSource(url);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'refresh') {
+          onUpdate();
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error(`[SSE] Error connecting to ${url}`, err);
+        eventSource?.close();
+        currentEndpointIndex++;
+        connect();
+      };
     };
 
-    eventSource.onerror = (err) => {
-      logError('SSE', err);
-      eventSource.close();
-    };
+    connect();
 
     return () => {
-      eventSource.close();
+      eventSource?.close();
     };
   }, [onUpdate]);
 };
