@@ -136,61 +136,21 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
                 setUploadError(data.message || 'Failed to upload image.');
               }
             })
-            .catch(() => {
-              setUploadError('Failed to upload image.');
+            .catch((err) => {
+              setUploadError('Failed to upload image: ' + err.message);
             });
           } else {
-            onAvatarChange(result);
-            setUploadSuccess(`"${file.name}" uploaded successfully!`);
+            setUploadError('Failed to process image for upload.');
           }
-        } catch {
-          onAvatarChange(result);
-          setUploadSuccess(`"${file.name}" uploaded successfully!`);
+        } catch (err) {
+          setUploadError('Failed to process image: ' + (err as Error).message);
         }
         setIsProcessing(false);
         setTimeout(() => setUploadSuccess(null), 3000);
       };
 
       img.onerror = () => {
-        // Fallback upload to backend
-        const uploadPayload = {
-          base64: result,
-          filename: file.name,
-          type: 'avatar'
-        };
-
-        const endpoints = [
-          '/php-backend/api/upload.php',
-          'http://13.247.178.29/php-backend/api/upload.php',
-        ];
-
-        const uploadAttempt = async (index: number): Promise<any> => {
-          if (index >= endpoints.length) throw new Error('All uploads failed');
-          const url = endpoints[index];
-          const isCrossDomain = url.startsWith('http');
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: isCrossDomain ? 'omit' : 'include',
-            body: JSON.stringify(uploadPayload)
-          });
-          if (res.ok) return await res.json();
-          return uploadAttempt(index + 1);
-        };
-
-        uploadAttempt(0)
-        .then(data => {
-          if (data.status === 'success' && data.url) {
-            onAvatarChange(data.url);
-            setUploadSuccess(`"${file.name}" uploaded successfully!`);
-          } else {
-            setUploadError(data.message || 'Failed to upload image.');
-          }
-        })
-        .catch(() => {
-          setUploadError('Failed to upload image.');
-        });
-        
+        setUploadError('Invalid image file.');
         setIsProcessing(false);
       };
 
