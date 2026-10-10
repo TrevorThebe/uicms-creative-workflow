@@ -82,12 +82,14 @@ if (is_array($input) && !empty($input['base64']) && !empty($input['filename'])) 
             'filename' => $uniqueName
         ]);
     } else {
+        error_log("Failed to save base64 asset to: " . $targetPath);
         sendResponse(500, ['status' => 'error', 'message' => 'Failed to save base64 asset']);
     }
 }
 
 // 2. Support Multipart Form File Upload
 if (!isset($_FILES['file'])) {
+    error_log("Upload error: No file payload found in request.");
     sendResponse(400, ['status' => 'error', 'message' => 'No file payload found in request']);
 }
 
@@ -105,6 +107,7 @@ if ($requestedType === 'avatar') {
 }
 
 if ($file['error'] !== UPLOAD_ERR_OK) {
+    error_log("PHP file upload error: " . $file['error']);
     sendResponse(400, ['status' => 'error', 'message' => 'PHP file upload error code: ' . $file['error']]);
 }
 
@@ -135,5 +138,7 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
         'filename' => $uniqueName
     ]);
 } else {
+    error_log("Failed to persist uploaded file to: " . $targetPath);
+    error_log("Upload tmp name: " . $file['tmp_name']);
     sendResponse(500, ['status' => 'error', 'message' => 'Failed to persist uploaded file']);
 }

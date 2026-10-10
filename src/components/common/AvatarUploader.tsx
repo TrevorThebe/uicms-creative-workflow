@@ -117,13 +117,11 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
                 onAvatarChange(data.url);
                 setUploadSuccess(`"${file.name}" saved to avatars folder!`);
               } else {
-                onAvatarChange(compressed);
-                setUploadSuccess(`"${file.name}" uploaded successfully!`);
+                setUploadError(data.message || 'Failed to upload image.');
               }
             })
             .catch(() => {
-              onAvatarChange(compressed);
-              setUploadSuccess(`"${file.name}" uploaded successfully!`);
+              setUploadError('Failed to upload image.');
             });
           } else {
             onAvatarChange(result);
@@ -152,17 +150,16 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
         .then(data => {
           if (data.status === 'success' && data.url) {
             onAvatarChange(data.url);
+            setUploadSuccess(`"${file.name}" uploaded successfully!`);
           } else {
-            onAvatarChange(result);
+            setUploadError(data.message || 'Failed to upload image.');
           }
         })
         .catch(() => {
-          onAvatarChange(result);
+          setUploadError('Failed to upload image.');
         });
         
-        setUploadSuccess(`"${file.name}" uploaded successfully!`);
         setIsProcessing(false);
-        setTimeout(() => setUploadSuccess(null), 3000);
       };
 
       img.src = result;
