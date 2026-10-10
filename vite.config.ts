@@ -1450,18 +1450,28 @@ function phpBackendPlugin(): Plugin {
 
         // Standalone Dynamic Database & Auth Engine
         if (cleanPath === '/php-backend/api/sse.php') {
+          console.log('[SSE] Connection request received');
           res.setHeader('Content-Type', 'text/event-stream');
           res.setHeader('Cache-Control', 'no-cache');
           res.setHeader('Connection', 'keep-alive');
           res.setHeader('Access-Control-Allow-Origin', '*');
 
-          const pool = await getMysqlConnection();
+          let pool = await getMysqlConnection();
           if (!pool) {
+            console.log('[SSE] Database pool not immediately available, retrying...');
+            // Wait a bit and try to get connection again
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            pool = await getMysqlConnection();
+          }
+
+          if (!pool) {
+            console.error('[SSE] Database unavailable after retry');
             res.write(`data: ${JSON.stringify({ error: 'Database unavailable' })}\n\n`);
             res.end();
             return;
           }
 
+          console.log('[SSE] Database connection established, starting interval');
           let lastUpdate: string | null = null;
           
           const interval = setInterval(async () => {
