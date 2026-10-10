@@ -386,7 +386,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
               className="p-1.5 text-slate-400 hover:text-white"
             >
               <X className="w-4 h-4" />
-            </button>
+            </button> 
           </form>
         )}
 
