@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { logError } from '../utils/logger';
 
 export const useSSE = (onUpdate: () => void) => {
   useEffect(() => {
@@ -14,7 +15,7 @@ export const useSSE = (onUpdate: () => void) => {
     };
 
     eventSource.onerror = (err) => {
-      console.error('SSE Error:', err);
+      logError('SSE', err);
       eventSource.close();
     };
 

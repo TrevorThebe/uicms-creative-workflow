@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -23,8 +23,16 @@ import { NotificationsCenterView } from './components/views/NotificationsCenterV
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
+import { useGlobalErrorLogging } from './utils/errorLogging';
+import { logInfo } from './utils/logger';
 
 const AppContent: React.FC = () => {
+  useGlobalErrorLogging();
+
+  useEffect(() => {
+    logInfo('App Loaded');
+  }, []);
+
   const { activeNavSection, setActiveNavSection, selectedProjectId, setSelectedProjectId, databaseReady, isAuthenticated } = useApp();
   const [projectInitialTab, setProjectInitialTab] = useState<string>('overview');
 
